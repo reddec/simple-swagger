@@ -1,0 +1,117 @@
+package {{package}}
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"net/url"
+
+	"github.com/julienschmidt/httprouter"
+)
+
+{% for name, definition in swagger.definitions.items() %}
+{%- if definition.type == 'object' %}
+type {{name}} struct {
+    {%- for prop_name, property in definition.properties.items() %}
+        {%- if prop_name not in definition.get('required', []) %}
+            {{prop_name | title}} *{{property | map_type}} `json:"{{prop_name}},omitempty"`
+        {%- else %}
+            {{prop_name | title}} {{property | map_type}} `json:"{{prop_name}}"`
+        {%- endif %}
+    {%- endfor %}
+}
+{%- endif %}
+{% endfor %}
+
+type API interface {
+    {%- for path, methods in swagger.paths.items() %}
+        {%- for method, endpoint in methods.items() %}
+        // {{endpoint.description | trim }}
+        {{endpoint.operationId | label}}(ctx context.Context
+        {%- for param in endpoint.get('parameters', []) -%}
+        , {{param.name}} {{param | map_type}}
+        {%- endfor -%}
+        )
+            {%- if 204 in endpoint.responses %} error
+            {%- else %} ({{endpoint.responses.200.schema | map_type}}, error)
+            {%- endif %}
+        {%- endfor %}
+    {%- endfor %}
+}
+
+const Prefix = "{{swagger.basePath}}/"
+
+func Handler(api API) http.Handler {
+    router := httprouter.New()
+
+
+
+     {%- for path, methods in swagger.paths.items() %}
+        {%- for method, endpoint in methods.items() %}
+
+        router.{{method | upper}}("{{path | path}}", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+            defer r.Body.Close()
+
+            {% for param in endpoint.get('parameters', []) -%}
+            var {{param.name}} {{param | map_type}} // in {{param.in}}
+            {% endfor -%}
+
+            {% for param in endpoint.get('parameters', []) -%}
+                {%- if param.in == 'path' %}
+                    if v, err := url.PathUnescape(ps.ByName("{{param.name}}")); err != nil{
+                         log.Println("{{endpoint.operationId}}: decode {{param.name}} from path:", err)
+                         jsonError(w, err, http.StatusBadRequest)
+                         return
+                    }  else {
+                        {{param.name}} = v
+                    }
+                {%- elif param.in == 'body' %}
+                    if err := json.NewDecoder(r.Body).Decode(&{{param.name}}); err != nil {
+                        log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
+                        jsonError(w, err, http.StatusBadRequest)
+                        return
+                    }
+                {% endif %}
+            {% endfor -%}
+
+            {%- if 204 in endpoint.responses %} err
+            {%- else %} res, err
+            {%- endif %} := api.{{endpoint.operationId | label}}(r.Context()
+            {%- for param in endpoint.get('parameters', []) -%}
+            , {{param.name}}
+            {%- endfor -%})
+
+            if err != nil {
+                log.Println("{{endpoint.operationId}}: execute:", err)
+                jsonError(w, err, http.StatusInternalServerError)
+                return
+            }
+
+            {%- if 204 in endpoint.responses %}
+            w.WriteHeader(http.StatusNoContent)
+            {%- else %}
+            w.Header().Set("Content-Type", "application/json")
+            encoder := json.NewEncoder(w)
+            encoder.SetIndent("", "  ")
+            w.WriteHeader(http.StatusOK)
+            _ = encoder.Encode(res)
+            {%- endif %}
+
+        })
+        {%- endfor %}
+    {%- endfor %}
+
+    return router
+}
+
+func jsonError(w http.ResponseWriter, err error, code int) {
+    type errMessage struct {
+        Error string `json:"error"`
+    }
+    w.Header().Set("Content-Type", "application/json")
+    encoder := json.NewEncoder(w)
+    encoder.SetIndent("", "  ")
+    w.WriteHeader(code)
+    _ = encoder.Encode(&errMessage{Error: err.Error()})
+}
