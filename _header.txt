@@ -1,0 +1,36 @@
+## Package
+
+* Name: `simpleswagger`
+* Version: `${VERSION}`
+
+## Install
+
+In virtual environment:
+
+```shell
+python3 -m venv venv
+. ./venv/bin/activate
+pip install simpleswagger==${VERSION}
+```
+
+Globally
+
+```shell
+pip install simpleswagger==${VERSION}
+```
+
+In requirements.txt
+
+```
+simpleswagger==${VERSION}
+```
+
+In Ansible
+
+```yaml
+- name: Install simpleswagger ${VERSION}
+  pip:
+    name: "simpleswagger==${VERSION}"
+```
+
+## Changelog
