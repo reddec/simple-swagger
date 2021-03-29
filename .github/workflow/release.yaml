@@ -1,0 +1,52 @@
+name: Build and release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v2
+      with:
+        lfs: true
+        fetch-depth: 0
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+    - name: Setup dev packages
+      run: pip3 install -r requirements.dev.txt
+    - name: Setup UI packages
+      run: |
+        cd ui
+        npm install .
+    - name: Build and release to PyPi
+      run: |
+        make release-github
+      env:
+        TWINE_PASSWORD: ${{ secrets.PYPI_SIMPLE_SWAGGER_TOKEN }}
+    - name: Create change log
+      run: |
+        PREV_TAG=`git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1)`
+        export VERSION=$(echo "${GITHUB_REF}" | awk -F '/' '{print $NF}' | tr -d 'v')
+        cat _header.txt | envsubst > changelog.txt
+        git log --pretty=oneline --abbrev-commit $PREV_TAG..HEAD | grep -v docs: | grep -v build: | grep -v test: | sed 's/^/* /'  >> changelog.txt
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        body_path: changelog.txt
+        draft: false
+        prerelease: false

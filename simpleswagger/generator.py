@@ -40,7 +40,7 @@ def main():
                         help='Location of handler file')
     parser.add_argument('--templates', '-t', type=Path, default=(Path(__file__).parent.absolute() / 'templates'),
                         help='Templates location')
-    parser.add_argument('--package', 'p', type=str, default='api', help='Package name')
+    parser.add_argument('--package', '-p', type=str, default='api', help='Package name')
     args = parser.parse_args()
 
     env = Environment(loader=FileSystemLoader(args.templates))
@@ -49,7 +49,7 @@ def main():
     env.filters['path'] = path
 
     swagger = safe_load(args.swagger.read_text())
-
+    args.output.parent.absolute().mkdir(parents=True, exist_ok=True)
     args.output.write_text(env.get_template('model.jinja2').render(swagger=swagger, package=args.package))
     check_call(['gofmt', '-w', '-s', str(args.output)])
 
