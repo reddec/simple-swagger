@@ -1,5 +1,5 @@
 export VERSION ?= dev-$(shell git rev-parse --short HEAD)
-export PROJECT ?= $(shell basename $(PWD))
+export PROJECT ?= simpleswagger
 ifndef GITHUB_REF
 export PATH := $(PWD)/venv/bin:$(PATH)
 endif
