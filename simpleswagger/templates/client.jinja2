@@ -46,6 +46,12 @@ type Client struct {
                     return
                 }
 
+                {%- for param in endpoint.get('parameters', []) -%}
+                    {%- if param.in == 'header' %}
+                        req.Header.Set("{{ param.name }}", {{ param.name }})
+                    {% endif %}
+                {%- endfor %}
+
                 {%- if endpoint | has_payload %}
                 req.Header.Set("Content-Type", "application/json")
                 {%- endif %}

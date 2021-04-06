@@ -110,6 +110,8 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
                         jsonError(w, err, http.StatusBadRequest)
                         return
                     }
+                {%- elif param.in == 'header' %}
+                    param{{param.name | label}} = r.Header.Get("{{ param.name }}")
                 {% endif %}
             {% endfor -%}
             {%- if endpoint | secured -%}
