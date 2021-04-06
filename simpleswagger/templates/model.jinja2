@@ -1,3 +1,4 @@
+{{ header }}
 package {{package}}
 
 import (
@@ -14,11 +15,7 @@ import (
 {%- if definition.type == 'object' %}
 type {{name}} struct {
     {%- for prop_name, property in definition.properties.items() %}
-        {%- if prop_name not in definition.get('required', []) %}
-            {{prop_name | title}} *{{property | map_type}} `json:"{{prop_name}},omitempty"`
-        {%- else %}
-            {{prop_name | title}} {{property | map_type}} `json:"{{prop_name}}"`
-        {%- endif %}
+        {{prop_name | title}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
     {%- endfor %}
 }
 {%- endif %}
