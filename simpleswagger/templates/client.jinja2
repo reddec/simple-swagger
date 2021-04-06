@@ -1,0 +1,114 @@
+{{ header }}
+package {{package}}
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+    "bytes"
+	"net/http"
+)
+
+type Client struct {
+    BaseURL string
+    Client  *http.Client
+
+    {%  if has_security %}
+        {% for  name, definition in swagger.securityDefinitions.items() %}
+            AuthBy{{ name | label }} string
+        {% endfor %}
+    {% endif %}
+}
+
+{%- for path, methods in swagger.paths.items() %}
+    {%- for method, endpoint in methods.items() %}
+        func (client *Client) {{endpoint.operationId | label}}(ctx context.Context {%- for param in endpoint.get('parameters', []) -%}
+        , {{param.name}} {{param | map_type}}
+        {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type}},{% endif %}err error) {
+            	requestURL := client.BaseURL + Prefix + "{{ path }}"
+                var body bytes.Buffer
+                {% for param in endpoint.get('parameters', []) -%}
+                    {%- if param.in == 'path' %}
+                        requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param.name }}))
+                    {%- elif param.in == 'body' %}
+                        if err = json.NewEncoder(&body).Encode({{ param.name }}); err != nil {
+                            err = fmt.Errorf("encode {{ param.name }}: %w", err)
+                            return
+                        }
+                    {% endif %}
+                {%- endfor %}
+
+                req, err := http.NewRequestWithContext(ctx, http.Method{{ method | title }}, requestURL, &body)
+                if err != nil {
+                    err = fmt.Errorf("prepare request: %w", err)
+                    return
+                }
+
+                {%- if endpoint | has_payload %}
+                req.Header.Set("Content-Type", "application/json")
+                {%- endif %}
+
+                {% if endpoint | secured %}
+                    {% for security in endpoint.security %}
+                        {%- if not loop.first %} else {% endif -%}
+                        {%- set sec_name = security.keys() | first -%}
+                        {%- set def = (sec_name | sec_def) -%}
+
+                        if cred := client.AuthBy{{ sec_name }}; cred != "" {
+                            {%- if  def["in"] == 'header' -%}
+                            req.Header.Set("{{ def.name }}", cred)
+                            {%- endif -%}
+                        }
+                    {% endfor %}
+                {% endif %}
+
+                res, err := client.getClient().Do(req)
+                if err != nil {
+                    err = fmt.Errorf("execute request: %w", err)
+                    return
+                }
+
+                defer res.Body.Close()
+
+                if res.StatusCode / 100 != 2 {
+                    err = getError(res)
+                    return
+                }
+
+                {%- if 200 in endpoint.responses %}
+                if err = json.NewDecoder(res.Body).Decode(&out); err != nil {
+                    err = fmt.Errorf("decode response: %w", err)
+                    return
+                }
+                {% endif %}
+
+                return
+        }
+    {% endfor %}
+{%- endfor %}
+
+func (client *Client) getClient() *http.Client {
+    if c:=client.Client; c != nil {
+        return c
+    }
+    return http.DefaultClient
+}
+
+func getError(res *http.Response) error {
+	payload, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("read error: %w", err)
+	}
+	if res.Header.Get("Content-Type") != "application/json" {
+		return errors.New(string(payload))
+	}
+	var msg errMessage
+	err = json.Unmarshal(payload, &msg)
+	if err != nil {
+		// fallback
+		return errors.New(string(payload))
+	}
+	return &msg
+}

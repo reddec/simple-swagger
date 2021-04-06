@@ -29,6 +29,12 @@ type Security interface {
         AuthBy{{ name | label }}(value string) ({{ credential_type }}, error)
     {% endfor %}
 }
+
+func Credentials(ctx context.Context) {{ credential_type }} {
+    return ctx.Value(ctxKeyCredentials).({{ credential_type }})
+}
+
+const ctxKeyCredentials = "credentials"
 {% endif %}
 
 type API interface {
@@ -36,9 +42,6 @@ type API interface {
         {%- for method, endpoint in methods.items() %}
         // {{endpoint.description | trim }}
         {{endpoint.operationId | label}}(ctx context.Context
-        {%- if endpoint | secured -%}
-            , credentials {{ credential_type }}
-        {%- endif -%}
         {%- for param in endpoint.get('parameters', []) -%}
         , {{param.name}} {{param | map_type}}
         {%- endfor -%}
@@ -50,7 +53,7 @@ type API interface {
     {%- endfor %}
 }
 
-const Prefix = "{{swagger.basePath}}/"
+const Prefix = "{{swagger.basePath}}"
 
 func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handler {
      router := httprouter.New()
@@ -109,13 +112,15 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
                     }
                 {% endif %}
             {% endfor -%}
+            {%- if endpoint | secured -%}
+            ctx := context.WithValue(r.Context(), ctxKeyCredentials, credentials)
+            {% else %}
+            ctx := r.Context()
+            {% endif %}
 
             {%- if 204 in endpoint.responses %} err
             {%- else %} res, err
-            {%- endif %} := api.{{endpoint.operationId | label}}(r.Context()
-            {%- if endpoint | secured -%}
-            , credentials
-            {%- endif -%}
+            {%- endif %} := api.{{endpoint.operationId | label}}(ctx
             {%- for param in endpoint.get('parameters', []) -%}
             , param{{param.name | label}}
             {%- endfor -%})
@@ -143,13 +148,18 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
     return router
 }
 
+type errMessage struct {
+    Message string `json:"error"`
+}
+
+func (err *errMessage) Error() string {
+    return err.Message
+}
+
 func jsonError(w http.ResponseWriter, err error, code int) {
-    type errMessage struct {
-        Error string `json:"error"`
-    }
     w.Header().Set("Content-Type", "application/json")
     encoder := json.NewEncoder(w)
     encoder.SetIndent("", "  ")
     w.WriteHeader(code)
-    _ = encoder.Encode(&errMessage{Error: err.Error()})
+    _ = encoder.Encode(&errMessage{Message: err.Error()})
 }
