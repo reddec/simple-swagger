@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-
+    {%  if has_security %}"errors"{% endif %}
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -24,11 +24,24 @@ type {{name}} struct {
 {%- endif %}
 {% endfor %}
 
+{%  if has_security %}
+var ErrUnauthorized = errors.New("unauthorized request")
+
+type Security interface {
+    {% for  name, definition in swagger.securityDefinitions.items() %}
+        AuthBy{{ name | label }}(value string) ({{ credential_type }}, error)
+    {% endfor %}
+}
+{% endif %}
+
 type API interface {
     {%- for path, methods in swagger.paths.items() %}
         {%- for method, endpoint in methods.items() %}
         // {{endpoint.description | trim }}
         {{endpoint.operationId | label}}(ctx context.Context
+        {%- if endpoint | secured -%}
+            , credentials {{ credential_type }}
+        {%- endif -%}
         {%- for param in endpoint.get('parameters', []) -%}
         , {{param.name}} {{param | map_type}}
         {%- endfor -%}
@@ -42,10 +55,8 @@ type API interface {
 
 const Prefix = "{{swagger.basePath}}/"
 
-func Handler(api API) http.Handler {
-    router := httprouter.New()
-
-
+func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handler {
+     router := httprouter.New()
 
      {%- for path, methods in swagger.paths.items() %}
         {%- for method, endpoint in methods.items() %}
@@ -53,8 +64,35 @@ func Handler(api API) http.Handler {
         router.{{method | upper}}("{{path | path}}", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
             defer r.Body.Close()
 
+            {% if endpoint | secured %}
+                var (
+                    credentials {{ credential_type }}
+                    authorized bool
+                )
+                {% for security in endpoint.security %}
+                    {%- if not loop.first %} else {% endif -%}
+                    {%- set sec_name = security.keys() | first -%}
+                    {%- set def = (sec_name | sec_def) -%}
+
+                    if cred, err := auth.AuthBy{{ sec_name }}(
+                    {%- if  def["in"] == 'header' -%}
+                        r.Header.Get("{{ def.name }}")
+                    {%- endif -%}
+                    ); err == nil {
+                        credentials = cred
+                        authorized = true
+                    }
+                {% endfor %}
+
+                if !authorized {
+                    log.Println("{{endpoint.operationId}}: authorization failed")
+                    jsonError(w, ErrUnauthorized, http.StatusUnauthorized)
+                    return
+                }
+            {% endif %}
+
             {% for param in endpoint.get('parameters', []) -%}
-            var {{param.name}} {{param | map_type}} // in {{param.in}}
+            var param{{param.name | label}} {{param | map_type}} // in {{param.in}}
             {% endfor -%}
 
             {% for param in endpoint.get('parameters', []) -%}
@@ -64,10 +102,10 @@ func Handler(api API) http.Handler {
                          jsonError(w, err, http.StatusBadRequest)
                          return
                     }  else {
-                        {{param.name}} = v
+                        param{{param.name | label}} = v
                     }
                 {%- elif param.in == 'body' %}
-                    if err := json.NewDecoder(r.Body).Decode(&{{param.name}}); err != nil {
+                    if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
                         log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
                         jsonError(w, err, http.StatusBadRequest)
                         return
@@ -78,8 +116,11 @@ func Handler(api API) http.Handler {
             {%- if 204 in endpoint.responses %} err
             {%- else %} res, err
             {%- endif %} := api.{{endpoint.operationId | label}}(r.Context()
+            {%- if endpoint | secured -%}
+            , credentials
+            {%- endif -%}
             {%- for param in endpoint.get('parameters', []) -%}
-            , {{param.name}}
+            , param{{param.name | label}}
             {%- endfor -%})
 
             if err != nil {

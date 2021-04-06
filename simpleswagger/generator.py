@@ -41,16 +41,22 @@ def main():
     parser.add_argument('--templates', '-t', type=Path, default=(Path(__file__).parent.absolute() / 'templates'),
                         help='Templates location')
     parser.add_argument('--package', '-p', type=str, default='api', help='Package name')
+    parser.add_argument('--credential', '-c', type=str, default='interface{}', help='Credential type')
     args = parser.parse_args()
 
     env = Environment(loader=FileSystemLoader(args.templates))
     env.filters['map_type'] = map_type
     env.filters['label'] = lambda x: x[0].upper() + x[1:]
     env.filters['path'] = path
-
+    env.filters['secured'] = lambda x: len(x.get('security', [])) > 0
+    env.filters['sec_def'] = lambda x: swagger['securityDefinitions'][x]
     swagger = safe_load(args.swagger.read_text())
     args.output.parent.absolute().mkdir(parents=True, exist_ok=True)
-    args.output.write_text(env.get_template('model.jinja2').render(swagger=swagger, package=args.package))
+    args.output.write_text(env.get_template('model.jinja2').render(swagger=swagger,
+                                                                   package=args.package,
+                                                                   credential_type=args.credential,
+                                                                   has_security=len(
+                                                                       swagger.get('securityDefinitions', {})) > 0))
     check_call(['gofmt', '-w', '-s', str(args.output)])
 
 

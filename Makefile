@@ -26,4 +26,7 @@ python: dirs
 system-files: dirs
 	cp LICENSE setup.py README.md MANIFEST.in build/
 
+install: build
+	 pip install --force-reinstall build/dist/simple_swagger-dev_*-py3-none-any.whl
+
 .PHONY: all build docs
