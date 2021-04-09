@@ -110,11 +110,12 @@ func getError(res *http.Response) error {
 	if res.Header.Get("Content-Type") != "application/json" {
 		return errors.New(string(payload))
 	}
-	var msg errMessage
+	var msg Error
 	err = json.Unmarshal(payload, &msg)
 	if err != nil {
 		// fallback
 		return errors.New(string(payload))
 	}
+    msg.Status = res.StatusCode
 	return &msg
 }

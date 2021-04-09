@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+    "errors"
 	"net/http"
 	"net/url"
     {%  if has_security %}"errors"{% endif %}
@@ -86,7 +87,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
 
                 if !authorized {
                     log.Println("{{endpoint.operationId}}: authorization failed")
-                    jsonError(w, ErrUnauthorized, http.StatusUnauthorized)
+                    jsonError(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
                     return
                 }
             {% endif %}
@@ -99,7 +100,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
                 {%- if param.in == 'path' %}
                     if v, err := url.PathUnescape(ps.ByName("{{param.name}}")); err != nil{
                          log.Println("{{endpoint.operationId}}: decode {{param.name}} from path:", err)
-                         jsonError(w, err, http.StatusBadRequest)
+                         jsonError(w, err.Error(), http.StatusBadRequest)
                          return
                     }  else {
                         param{{param.name | label}} = v
@@ -107,7 +108,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
                 {%- elif param.in == 'body' %}
                     if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
                         log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
-                        jsonError(w, err, http.StatusBadRequest)
+                        jsonError(w, err.Error(), http.StatusBadRequest)
                         return
                     }
                 {%- elif param.in == 'header' %}
@@ -129,7 +130,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
 
             if err != nil {
                 log.Println("{{endpoint.operationId}}: execute:", err)
-                jsonError(w, err, http.StatusInternalServerError)
+                autoError(w, err)
                 return
             }
 
@@ -150,18 +151,31 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
     return router
 }
 
-type errMessage struct {
-    Message string `json:"error"`
+type Error struct {
+	Status  int    `json:"-"`
+	Message string `json:"error"`
 }
 
-func (err *errMessage) Error() string {
-    return err.Message
+func (err *Error) Error() string {
+	return err.Message
 }
 
-func jsonError(w http.ResponseWriter, err error, code int) {
-    w.Header().Set("Content-Type", "application/json")
-    encoder := json.NewEncoder(w)
-    encoder.SetIndent("", "  ")
-    w.WriteHeader(code)
-    _ = encoder.Encode(&errMessage{Message: err.Error()})
+func autoError(w http.ResponseWriter, err error) {
+	var apiError Error
+	if errors.As(err, &apiError) {
+		jsonError(w, apiError.Message, apiError.Status)
+	}
+	jsonError(w, err.Error(), http.StatusInternalServerError)
+}
+
+func jsonError(w http.ResponseWriter, err string, code int) {
+    type errMessage struct {
+        Message string `json:"error"`
+    }
+
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	w.WriteHeader(code)
+	_ = encoder.Encode(&errMessage{Message: err})
 }
