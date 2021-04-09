@@ -160,9 +160,16 @@ func (err *Error) Error() string {
 	return err.Message
 }
 
-func autoError(w http.ResponseWriter, err error) {
-	var apiError Error
+func AsAPIError(err error) (*Error, bool) {
+	var apiError *Error
 	if errors.As(err, &apiError) {
+		return apiError, true
+	}
+	return nil, false
+}
+
+func autoError(w http.ResponseWriter, err error) {
+	if apiError, ok := AsAPIError(err); ok {
 		jsonError(w, apiError.Message, apiError.Status)
 	}
 	jsonError(w, err.Error(), http.StatusInternalServerError)
