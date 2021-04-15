@@ -9,11 +9,21 @@ import (
 	"io/ioutil"
     "bytes"
 	"net/http"
+    api "{{ api_package }}"
 )
 
+func New(baseURL string) *Client {
+	return &Client{
+		BaseURL:       baseURL,
+		Client:        &http.Client{},
+		CustomHeaders: make(http.Header),
+	}
+}
+
 type Client struct {
-    BaseURL string
-    Client  *http.Client
+    BaseURL      string
+    Client       *http.Client
+    CustomHeaders http.Header
 
     {%  if has_security %}
         {% for  name, definition in swagger.securityDefinitions.items() %}
@@ -25,9 +35,9 @@ type Client struct {
 {%- for path, methods in swagger.paths.items() %}
     {%- for method, endpoint in methods.items() %}
         func (client *Client) {{endpoint.operationId | label}}(ctx context.Context {%- for param in endpoint.get('parameters', []) -%}
-        , {{param.name}} {{param | map_type}}
-        {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type}},{% endif %}err error) {
-            	requestURL := client.BaseURL + Prefix + "{{ path }}"
+        , {{param.name}} {{param | map_type(true)}}
+        {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type(true)}},{% endif %}err error) {
+            	requestURL := client.BaseURL + api.Prefix + "{{ path }}"
                 var body bytes.Buffer
                 {% for param in endpoint.get('parameters', []) -%}
                     {%- if param.in == 'path' %}
@@ -70,6 +80,8 @@ type Client struct {
                     {% endfor %}
                 {% endif %}
 
+                client.setCustomHeaders(req)
+
                 res, err := client.getClient().Do(req)
                 if err != nil {
                     err = fmt.Errorf("execute request: %w", err)
@@ -95,8 +107,14 @@ type Client struct {
     {% endfor %}
 {%- endfor %}
 
+func (client *Client) setCustomHeaders(req *http.Request) {
+	for k, v := range client.CustomHeaders {
+		req.Header[k] = v
+	}
+}
+
 func (client *Client) getClient() *http.Client {
-    if c:=client.Client; c != nil {
+    if c := client.Client; c != nil {
         return c
     }
     return http.DefaultClient
@@ -110,7 +128,7 @@ func getError(res *http.Response) error {
 	if res.Header.Get("Content-Type") != "application/json" {
 		return errors.New(string(payload))
 	}
-	var msg Error
+	var msg api.Error
 	err = json.Unmarshal(payload, &msg)
 	if err != nil {
 		// fallback

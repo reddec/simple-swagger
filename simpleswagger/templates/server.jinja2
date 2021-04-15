@@ -8,19 +8,10 @@ import (
     "errors"
 	"net/http"
 	"net/url"
+    api "{{ api_package }}"
     {%  if has_security %}"errors"{% endif %}
 	"github.com/julienschmidt/httprouter"
 )
-
-{% for name, definition in swagger.definitions.items() %}
-{%- if definition.type == 'object' %}
-type {{name}} struct {
-    {%- for prop_name, property in definition.properties.items() %}
-        {{prop_name | title}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
-    {%- endfor %}
-}
-{%- endif %}
-{% endfor %}
 
 {%  if has_security %}
 var ErrUnauthorized = errors.New("unauthorized request")
@@ -38,25 +29,7 @@ func Credentials(ctx context.Context) {{ credential_type }} {
 const ctxKeyCredentials = "credentials"
 {% endif %}
 
-type API interface {
-    {%- for path, methods in swagger.paths.items() %}
-        {%- for method, endpoint in methods.items() %}
-        // {{endpoint.description | trim }}
-        {{endpoint.operationId | label}}(ctx context.Context
-        {%- for param in endpoint.get('parameters', []) -%}
-        , {{param.name}} {{param | map_type}}
-        {%- endfor -%}
-        )
-            {%- if 204 in endpoint.responses %} error
-            {%- else %} ({{endpoint.responses.200.schema | map_type}}, error)
-            {%- endif %}
-        {%- endfor %}
-    {%- endfor %}
-}
-
-const Prefix = "{{swagger.basePath}}"
-
-func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handler {
+func Handler(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handler {
      router := httprouter.New()
 
      {%- for path, methods in swagger.paths.items() %}
@@ -93,7 +66,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
             {% endif %}
 
             {% for param in endpoint.get('parameters', []) -%}
-            var param{{param.name | label}} {{param | map_type}} // in {{param.in}}
+            var param{{param.name | label}} {{param | map_type(true)}} // in {{param.in}}
             {% endfor -%}
 
             {% for param in endpoint.get('parameters', []) -%}
@@ -123,7 +96,7 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
 
             {%- if 204 in endpoint.responses %} err
             {%- else %} res, err
-            {%- endif %} := api.{{endpoint.operationId | label}}(ctx
+            {%- endif %} := impl.{{endpoint.operationId | label}}(ctx
             {%- for param in endpoint.get('parameters', []) -%}
             , param{{param.name | label}}
             {%- endfor -%})
@@ -151,25 +124,8 @@ func Handler(api API{% if has_security %}, auth Security{% endif %}) http.Handle
     return router
 }
 
-type Error struct {
-	Status  int    `json:"-"`
-	Message string `json:"error"`
-}
-
-func (err *Error) Error() string {
-	return err.Message
-}
-
-func AsAPIError(err error) (*Error, bool) {
-	var apiError *Error
-	if errors.As(err, &apiError) {
-		return apiError, true
-	}
-	return nil, false
-}
-
 func autoError(w http.ResponseWriter, err error) {
-	if apiError, ok := AsAPIError(err); ok {
+	if apiError, ok := api.AsAPIError(err); ok {
 		jsonError(w, apiError.Message, apiError.Status)
 	}
 	jsonError(w, err.Error(), http.StatusInternalServerError)

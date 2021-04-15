@@ -1,5 +1,6 @@
 export VERSION ?= dev-$(shell git rev-parse --short HEAD)
 export PROJECT ?= simpleswagger
+OPATH := $(PATH)
 ifndef GITHUB_REF
 export PATH := $(PWD)/venv/bin:$(PATH)
 endif
@@ -27,6 +28,6 @@ system-files: dirs
 	cp LICENSE setup.py README.md MANIFEST.in build/
 
 install: build
-	 pip install --force-reinstall build/dist/simple_swagger-dev_*-py3-none-any.whl
+	PATH=$(OPATH) pip3 install --user --force-reinstall build/dist/simple_swagger-dev_*-py3-none-any.whl
 
 .PHONY: all build docs
