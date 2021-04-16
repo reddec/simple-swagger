@@ -127,6 +127,7 @@ func New(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handl
 func autoError(w http.ResponseWriter, err error) {
 	if apiError, ok := api.AsAPIError(err); ok {
 		jsonError(w, apiError.Message, apiError.Status)
+        return
 	}
 	jsonError(w, err.Error(), http.StatusInternalServerError)
 }
