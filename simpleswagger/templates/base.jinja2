@@ -12,6 +12,15 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+{% for name, definition in enums %}
+    type {{ name }} {{ definition | map_type }}
+    const (
+    {%- for option in definition.enum %}
+         {{ name }}{{ option | label }} {{ name }} = {{ option | cast(definition) }}
+    {%- endfor %}
+    )
+{% endfor %}
+
 {% for name, definition in swagger.definitions.items() %}
 {%- if definition.type == 'object' %}
 type {{name}} struct {
