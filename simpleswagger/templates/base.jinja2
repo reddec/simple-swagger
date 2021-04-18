@@ -8,7 +8,6 @@ import (
     "errors"
 	"net/http"
 	"net/url"
-    {%  if has_security %}"errors"{% endif %}
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -19,6 +18,24 @@ import (
          {{ name }}{{ option | label }} {{ name }} = {{ option | cast(definition) }}
     {%- endfor %}
     )
+
+    {% if (definition | map_type) == 'string' %}
+
+    var ErrParse{{ name }} = errors.New("un-parsable {{ name }}")
+
+    func (v *{{ name }}) UnmarshalText(text []byte) error {
+        switch string(text) {
+            {%- for option in definition.enum %}
+                 case {{ option | cast(definition) }}:
+                   *v = {{ name }}{{ option | label }}
+            {%- endfor %}
+                default:
+                    return  ErrParse{{ name }}
+        }
+        return nil
+    }
+    {% endif %}
+
 {% endfor %}
 
 {% for name, definition in swagger.definitions.items() %}
