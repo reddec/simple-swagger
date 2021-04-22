@@ -12,24 +12,78 @@ import (
     api "{{ api_package }}"
 )
 
-func New(baseURL string) *Client {
-	return &Client{
-		BaseURL:       baseURL,
-		Client:        &http.Client{},
-		CustomHeaders: make(http.Header),
+type RequestHook func(req *http.Request) error
+
+func New(baseURL string, options ...Option) *Client {
+	cl := &Client{
+		baseURL: baseURL,
+		client:  http.DefaultClient,
+	}
+	for _, opt := range options {
+		opt(cl)
+	}
+	return cl
+}
+
+type Option func(cl *Client)
+
+func HTTPClient(client *http.Client) Option {
+	return func(cl *Client) {
+		cl.client = client
 	}
 }
 
-type Client struct {
-    BaseURL      string
-    Client       *http.Client
-    CustomHeaders http.Header
+func Before(hook RequestHook) Option {
+	return func(cl *Client) {
+		cl.beforeHooks = append(cl.beforeHooks, hook)
+	}
+}
 
-    {%  if has_security %}
-        {% for  name, definition in swagger.securityDefinitions.items() %}
-            AuthBy{{ name | label }} string
-        {% endfor %}
-    {% endif %}
+{%  if has_security %}
+    {% for  name, definition in swagger.securityDefinitions.items() %}
+        {%- set def = (name | sec_def) -%}
+        func AuthBy{{ name | label }}(cred string) Option {
+            return func(cl *Client) {
+                cl.securityHooks = append(cl.securityHooks, func(req *http.Request) error {
+                     {% if  def["in"] == 'header' -%}
+                        req.Header.Set("{{ def.name }}", cred)
+                    {% endif -%}
+                    return nil
+                })
+            }
+        }
+    {% endfor %}
+{% endif %}
+
+
+type Client struct {
+    baseURL      string
+    client       *http.Client
+    beforeHooks  []RequestHook
+{%-  if has_security %}
+    securityHooks []RequestHook
+{%- endif %}
+}
+
+// Creates full copy of original client and applies new options.
+func (client *Client) With(options ...Option) *Client {
+	cp := &Client{
+		baseURL:     client.baseURL,
+		client:      client.client,
+		beforeHooks: make([]RequestHook, len(client.beforeHooks)),
+{%-  if has_security %}
+        securityHooks : make([]RequestHook, len(client.securityHooks)),
+{%- endif %}
+	}
+	copy(cp.beforeHooks, client.beforeHooks)
+{%-  if has_security %}
+    copy(cp.securityHooks, client.securityHooks)
+{%- endif %}
+	for _, opt := range options {
+		opt(cp)
+	}
+
+	return cp
 }
 
 {%- for path, methods in swagger.paths.items() %}
@@ -37,7 +91,7 @@ type Client struct {
         func (client *Client) {{endpoint.operationId | label}}(ctx context.Context {%- for param in endpoint.get('parameters', []) -%}
         , {{param.name}} {{param | map_type(true)}}
         {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type(true)}},{% endif %}err error) {
-            	requestURL := client.BaseURL + api.Prefix + "{{ path }}"
+            	requestURL := client.baseURL + api.Prefix + "{{ path }}"
                 var body bytes.Buffer
                 {% for param in endpoint.get('parameters', []) -%}
                     {%- if param.in == 'path' %}
@@ -65,24 +119,20 @@ type Client struct {
                 {%- if endpoint | has_payload %}
                 req.Header.Set("Content-Type", "application/json")
                 {%- endif %}
-
                 {% if endpoint | secured %}
-                    {% for security in endpoint.security %}
-                        {%- if not loop.first %} else {% endif -%}
-                        {%- set sec_name = security.keys() | first -%}
-                        {%- set def = (sec_name | sec_def) -%}
-
-                        if cred := client.AuthBy{{ sec_name }}; cred != "" {
-                            {%- if  def["in"] == 'header' -%}
-                            req.Header.Set("{{ def.name }}", cred)
-                            {%- endif -%}
-                        }
-                    {% endfor %}
+                for _, hook := range client.securityHooks {
+                    if err = hook(req); err != nil {
+                        return
+                    }
+                }
                 {% endif %}
+                for _, hook := range client.beforeHooks {
+                    if err = hook(req); err != nil {
+                        return
+                    }
+                }
 
-                client.setCustomHeaders(req)
-
-                res, err := client.getClient().Do(req)
+                res, err := client.client.Do(req)
                 if err != nil {
                     err = fmt.Errorf("execute request: %w", err)
                     return
@@ -106,19 +156,6 @@ type Client struct {
         }
     {% endfor %}
 {%- endfor %}
-
-func (client *Client) setCustomHeaders(req *http.Request) {
-	for k, v := range client.CustomHeaders {
-		req.Header[k] = v
-	}
-}
-
-func (client *Client) getClient() *http.Client {
-    if c := client.Client; c != nil {
-        return c
-    }
-    return http.DefaultClient
-}
 
 func getError(res *http.Response) error {
 	payload, err := ioutil.ReadAll(res.Body)
