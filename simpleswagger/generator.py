@@ -37,11 +37,55 @@ def map_type(definition: dict, imported: bool = False):
 
     if type_name == 'integer':
         fmt = definition.get('format')
+        minimum = definition.get('minimum')
+        prefix = ''
+        if minimum == 0:
+            prefix = 'u'
         if fmt == 'int32':
-            return 'int32'
-        return 'int64'
+            return prefix + 'int32'
+        return prefix + 'int64'
 
     return 'interface{}'
+
+
+def from_string(definition: dict, param: str) -> str:
+    type_name = map_type(definition)
+    if type_name == 'boolean':
+        return f'strconv.ParseBool({param})'
+    if type_name == 'float64':
+        return f'strconv.ParseFloat({param}, 64)'
+    if type_name == 'float32':
+        return f'strconv.ParseFloat({param}, 32)'
+    if type_name == 'int64':
+        return f'strconv.ParseInt({param}, 10, 64)'
+    if type_name == 'int32':
+        return f'strconv.ParseInt({param}, 10, 32)'
+    if type_name == 'uint64':
+        return f'strconv.ParseUint({param}, 10, 64)'
+    if type_name == 'uint32':
+        return f'strconv.ParseUint({param}, 10, 32)'
+    return param
+
+
+def to_string(definition: dict, param: str) -> str:
+    type_name = map_type(definition)
+    if type_name == 'string':
+        return param
+    if type_name == 'boolean':
+        return f'strconv.FormatBool({param})'
+    if type_name == 'float64':
+        return f'strconv.FormatFloat({param}, \'f\', -1, 32)'
+    if type_name == 'float32':
+        return f'strconv.FormatFloat(float64({param}), \'f\', -1, 64)'
+    if type_name == 'int64':
+        return f'strconv.FormatInt({param}, 10)'
+    if type_name == 'int32':
+        return f'strconv.FormatInt(int64({param}), 10)'
+    if type_name == 'uint64':
+        return f'strconv.FormatUint({param}, 10)'
+    if type_name == 'uint32':
+        return f'strconv.FormatUint(uint64({param}), 10)'
+    return f'fmt.Sprint({param})'
 
 
 def path(text: str) -> str:
@@ -91,6 +135,8 @@ def main():
     env.filters['label'] = lambda x: x[0].upper() + x[1:]
     env.filters['path'] = path
     env.filters['cast'] = cast
+    env.filters['from_string'] = from_string
+    env.filters['to_string'] = to_string
     env.filters['secured'] = lambda x: len(x.get('security', [])) > 0
     env.filters['sec_def'] = lambda x: swagger['securityDefinitions'][x]
     env.filters['has_payload'] = lambda x: any(param for param in x.get('parameters', []) if param['in'] == 'body')

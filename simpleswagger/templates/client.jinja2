@@ -95,7 +95,7 @@ func (client *Client) With(options ...Option) *Client {
                 var body bytes.Buffer
                 {% for param in endpoint.get('parameters', []) -%}
                     {%- if param.in == 'path' %}
-                        requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param.name }}))
+                        requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param | to_string(param.name) }}))
                     {%- elif param.in == 'body' %}
                         if err = json.NewEncoder(&body).Encode({{ param.name }}); err != nil {
                             err = fmt.Errorf("encode {{ param.name }}: %w", err)
