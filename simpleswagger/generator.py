@@ -43,7 +43,9 @@ def map_type(definition: dict, imported: bool = False):
             prefix = 'u'
         if fmt == 'int32':
             return prefix + 'int32'
-        return prefix + 'int64'
+        if fmt == 'int64':
+            return prefix + 'int64'
+        return prefix + 'int'
 
     return 'interface{}'
 
@@ -56,11 +58,11 @@ def from_string(definition: dict, param: str) -> str:
         return f'strconv.ParseFloat({param}, 64)'
     if type_name == 'float32':
         return f'strconv.ParseFloat({param}, 32)'
-    if type_name == 'int64':
+    if type_name == 'int64' or type_name == 'int':
         return f'strconv.ParseInt({param}, 10, 64)'
     if type_name == 'int32':
         return f'strconv.ParseInt({param}, 10, 32)'
-    if type_name == 'uint64':
+    if type_name == 'uint64' or type_name == 'uint':
         return f'strconv.ParseUint({param}, 10, 64)'
     if type_name == 'uint32':
         return f'strconv.ParseUint({param}, 10, 32)'
@@ -79,11 +81,11 @@ def to_string(definition: dict, param: str) -> str:
         return f'strconv.FormatFloat(float64({param}), \'f\', -1, 64)'
     if type_name == 'int64':
         return f'strconv.FormatInt({param}, 10)'
-    if type_name == 'int32':
+    if type_name == 'int32' or type_name == 'int':
         return f'strconv.FormatInt(int64({param}), 10)'
     if type_name == 'uint64':
         return f'strconv.FormatUint({param}, 10)'
-    if type_name == 'uint32':
+    if type_name == 'uint32' or type_name == 'uint':
         return f'strconv.FormatUint(uint64({param}), 10)'
     return f'fmt.Sprint({param})'
 
