@@ -89,15 +89,15 @@ func (client *Client) With(options ...Option) *Client {
 {%- for path, methods in swagger.paths.items() %}
     {%- for method, endpoint in methods.items() %}
         func (client *Client) {{endpoint.operationId | label}}(ctx context.Context {%- for param in endpoint.get('parameters', []) -%}
-        , {{param.name}} {{param | map_type(true)}}
+        , {{param.name | private}} {{param | map_type(true)}}
         {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type(true)}},{% endif %}err error) {
             	requestURL := client.baseURL + api.Prefix + "{{ path }}"
                 var body bytes.Buffer
                 {% for param in endpoint.get('parameters', []) -%}
                     {%- if param.in == 'path' %}
-                        requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param | to_string(param.name) }}))
+                        requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param | to_string(param.name | private) }}))
                     {%- elif param.in == 'body' %}
-                        if err = json.NewEncoder(&body).Encode({{ param.name }}); err != nil {
+                        if err = json.NewEncoder(&body).Encode({{ param.name | private }}); err != nil {
                             err = fmt.Errorf("encode {{ param.name }}: %w", err)
                             return
                         }

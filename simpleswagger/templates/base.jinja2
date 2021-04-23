@@ -42,7 +42,7 @@ import (
 {%- if definition.type == 'object' %}
 type {{name}} struct {
     {%- for prop_name, property in definition.properties.items() %}
-        {{prop_name | title}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
+        {{prop_name | label}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
     {%- endfor %}
 }
 {%- endif %}
@@ -54,7 +54,7 @@ type API interface {
         // {{endpoint.description | trim }}
         {{endpoint.operationId | label}}(ctx context.Context
         {%- for param in endpoint.get('parameters', []) -%}
-        , {{param.name}} {{param | map_type}}
+        , {{param.name | private}} {{param | map_type}}
         {%- endfor -%}
         )
             {%- if 204 in endpoint.responses %} error
@@ -72,7 +72,7 @@ type API interface {
             // {{endpoint.description | trim }}
             {{endpoint.operationId | label}}(ctx context.Context
             {%- for param in endpoint.get('parameters', []) -%}
-            , {{param.name}} {{param | map_type}}
+            , {{param.name | private}} {{param | map_type}}
             {%- endfor -%}
             )
             {%- if 204 in endpoint.responses %} error

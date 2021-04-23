@@ -79,7 +79,7 @@ func New(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handl
                         {%- if (param | map_type) == 'string'%}
                         param{{param.name | label}} = v
                         {%- else %}
-                        if value, err := {{ param | from_string('v') }}; err != nil {
+                        if value, err := {{ param | from_string('v') }}; err == nil {
                             param{{param.name | label}} = {{ (param | map_type) }}(value)
                         } else {
                             log.Println("{{endpoint.operationId}}: decode {{param.name}} from path:", err)

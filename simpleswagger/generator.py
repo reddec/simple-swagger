@@ -121,6 +121,20 @@ def cast(value, definition: dict) -> str:
     return value
 
 
+def label(text: str) -> str:
+    if '_' in text:
+        text = "".join(label(t) for t in text.split('_'))
+    text = text[0].upper() + text[1:]
+    return text
+
+
+def private(text: str) -> str:
+    if '_' in text:
+        text = "".join(label(t) for t in text.split('_'))
+    text = text[0].lower() + text[1:]
+    return text
+
+
 def main():
     parser = ArgumentParser(description='Zombie swagger 2.0')
     parser.add_argument('--swagger', '-s', type=Path, default=(Path.cwd() / "swagger.yaml"),
@@ -134,7 +148,8 @@ def main():
 
     env = Environment(loader=FileSystemLoader(args.templates))
     env.filters['map_type'] = map_type
-    env.filters['label'] = lambda x: x[0].upper() + x[1:]
+    env.filters['label'] = label
+    env.filters['private'] = private
     env.filters['path'] = path
     env.filters['cast'] = cast
     env.filters['from_string'] = from_string
