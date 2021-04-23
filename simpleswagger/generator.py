@@ -135,6 +135,10 @@ def private(text: str) -> str:
     return text
 
 
+def comment(text: str) -> str:
+    return '\n'.join('// ' + line for line in text.splitlines())
+
+
 def main():
     parser = ArgumentParser(description='Zombie swagger 2.0')
     parser.add_argument('--swagger', '-s', type=Path, default=(Path.cwd() / "swagger.yaml"),
@@ -152,6 +156,7 @@ def main():
     env.filters['private'] = private
     env.filters['path'] = path
     env.filters['cast'] = cast
+    env.filters['comment'] = comment
     env.filters['from_string'] = from_string
     env.filters['to_string'] = to_string
     env.filters['secured'] = lambda x: len(x.get('security', [])) > 0

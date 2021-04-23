@@ -51,7 +51,7 @@ type {{name}} struct {
 type API interface {
     {%- for path, methods in swagger.paths.items() %}
         {%- for method, endpoint in methods.items() %}
-        // {{endpoint.description | trim }}
+        {{endpoint.description | comment }}
         {{endpoint.operationId | label}}(ctx context.Context
         {%- for param in endpoint.get('parameters', []) -%}
         , {{param.name | private}} {{param | map_type}}
@@ -69,7 +69,7 @@ type API interface {
     type {{ tag | label }}API interface {
         {%- for operation in operations %}
             {%- set endpoint = methods[operation]  %}
-            // {{endpoint.description | trim }}
+            {{endpoint.description | comment }}
             {{endpoint.operationId | label}}(ctx context.Context
             {%- for param in endpoint.get('parameters', []) -%}
             , {{param.name | private}} {{param | map_type}}
