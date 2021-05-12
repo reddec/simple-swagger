@@ -24,6 +24,9 @@ def map_type(definition: dict, imported: bool = False):
     type_name = definition['type']
 
     if type_name == 'string':
+        fmt = definition.get('format')
+        if fmt == 'date-time':
+            return 'time.Time'
         return 'string'
     if type_name == 'boolean':
         return 'bool'
@@ -52,7 +55,9 @@ def map_type(definition: dict, imported: bool = False):
 
 def from_string(definition: dict, param: str) -> str:
     type_name = map_type(definition)
-    if type_name == 'boolean':
+    if type_name == 'time.Time':
+        return f'time.Parse(time.RFC3339, {param})'
+    if type_name == 'bool':
         return f'strconv.ParseBool({param})'
     if type_name == 'float64':
         return f'strconv.ParseFloat({param}, 64)'
