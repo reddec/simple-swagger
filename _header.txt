@@ -1,6 +1,6 @@
 ## Package
 
-* Name: `simpleswagger`
+* Name: `simple-swagger`
 * Version: `${VERSION}`
 
 ## Install
@@ -10,27 +10,27 @@ In virtual environment:
 ```shell
 python3 -m venv venv
 . ./venv/bin/activate
-pip install simpleswagger==${VERSION}
+pip install simple-swagger==${VERSION}
 ```
 
 Globally
 
 ```shell
-pip install simpleswagger==${VERSION}
+pip install simple-swagger==${VERSION}
 ```
 
 In requirements.txt
 
 ```
-simpleswagger==${VERSION}
+simple-swagger==${VERSION}
 ```
 
 In Ansible
 
 ```yaml
-- name: Install simpleswagger ${VERSION}
+- name: Install simple-swagger ${VERSION}
   pip:
-    name: "simpleswagger==${VERSION}"
+    name: "simple-swagger==${VERSION}"
 ```
 
 ## Changelog
