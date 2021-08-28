@@ -96,6 +96,18 @@ func New(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handl
                     }
                 {%- elif param.in == 'header' %}
                     param{{param.name | label}} = r.Header.Get("{{ param.name }}")
+                {%- elif param.in == 'query' %}
+                    {%- if (param | map_type) == 'string'%}
+                    param{{param.name | label}} = r.URL.Query().Get("{{ param.name }}")
+                    {%- else %}
+                    if value, err := {{ param | from_string('queryParam(r, ' + (param.name | tojson) + ',' + (param.default | string | tojson) + ' )') }}; err == nil {
+                        param{{param.name | label}} = {{ (param | map_type) }}(value)
+                    } else {
+                        log.Println("{{endpoint.operationId}}: decode {{param.name}} from query:", err)
+                        jsonError(w, err.Error(), http.StatusBadRequest)
+                        return
+                    }
+                    {%- endif  %}
                 {% endif %}
             {% endfor -%}
             {%- if endpoint | secured -%}
@@ -152,4 +164,11 @@ func jsonError(w http.ResponseWriter, err string, code int) {
 	encoder.SetIndent("", "  ")
 	w.WriteHeader(code)
 	_ = encoder.Encode(&errMessage{Message: err})
+}
+
+func queryParam(r *http.Request, name string, defaultValue string) string {
+    if r.URL.Query.Has(name) {
+        return r.URL.Query.Get(name)
+    }
+    return defaultValue
 }

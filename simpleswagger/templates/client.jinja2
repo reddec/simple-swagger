@@ -93,7 +93,7 @@ func (client *Client) With(options ...Option) *Client {
         {%- endfor -%}) ({%- if 200 in endpoint.responses %}out {{endpoint.responses.200.schema | map_type(true)}},{% endif %}err error) {
             	requestURL := client.baseURL + api.Prefix + "{{ path }}"
                 var body bytes.Buffer
-                {% for param in endpoint.get('parameters', []) -%}
+                {% for param in endpoint.get('parameters', []) %}
                     {%- if param.in == 'path' %}
                         requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param | to_string(param.name | private) }}))
                     {%- elif param.in == 'body' %}
@@ -102,6 +102,10 @@ func (client *Client) With(options ...Option) *Client {
                             return
                         }
                     {% endif %}
+                {%- endfor %}
+
+                {% for param in (endpoint.get('parameters', []) | inside('query')) %}
+                    requestURL += "{% if loop.first %}?{% else %}&{% endif %}{{ param.name }}=" + url.QueryEscape({{ param | to_string(param.name | private) }})
                 {%- endfor %}
 
                 req, err := http.NewRequestWithContext(ctx, http.Method{{ method | title }}, requestURL, &body)
