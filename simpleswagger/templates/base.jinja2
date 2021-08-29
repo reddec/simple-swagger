@@ -58,6 +58,7 @@ import (
     {%- endif %}
 {% endfor %}
 
+// API methods.
 type API interface {
     {%- for path, methods in swagger.paths.items() %}
         {%- for method, endpoint in methods.items() %}
