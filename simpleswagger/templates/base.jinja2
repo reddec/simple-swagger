@@ -13,6 +13,9 @@ import (
 )
 
 {% for name, definition in enums %}
+    {%- if definition.description  %}
+    {{ definition.description | comment}}
+    {%- endif  %}
     type {{ name }} {{ definition | map_type }}
     const (
     {%- for option in definition.enum %}
@@ -40,13 +43,19 @@ import (
 {% endfor %}
 
 {% for name, definition in swagger.definitions.items() %}
-{%- if definition.type == 'object' %}
-type {{name}} struct {
-    {%- for prop_name, property in definition.properties.items() %}
-        {{prop_name | label}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
-    {%- endfor %}
-}
-{%- endif %}
+    {%- if definition.type == 'object' %}
+        {%- if definition.description  %}
+            {{ definition.description | comment}}
+        {%- endif  %}
+        type {{name}} struct {
+            {%- for prop_name, property in definition.properties.items() %}
+                {%- if property.description  %}
+                    {{ property.description | comment}}
+                {%- endif  %}
+                {{prop_name | label}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
+            {%- endfor %}
+        }
+    {%- endif %}
 {% endfor %}
 
 type API interface {
@@ -83,6 +92,7 @@ type API interface {
     }
 {%- endfor %}
 
+// Prefix for base URL for API.
 const Prefix = "{{swagger.basePath}}"
 
 type Error struct {
