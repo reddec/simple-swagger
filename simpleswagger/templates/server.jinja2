@@ -81,6 +81,10 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
         var param{{param.name | label}} {{param | map_type(true)}} // in {{param.in}}
         {% endfor -%}
 
+        {%- if (endpoint | has_query_params) %}
+        var urlParams = r.URL.Query()
+        {%- endif %}
+
         {% for param in endpoint.get('parameters', []) -%}
             {%- if param.in == 'path' %}
                 if v, err := url.PathUnescape(ps.ByName("{{param.name}}")); err != nil{
@@ -110,9 +114,9 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
                 param{{param.name | label}} = r.Header.Get("{{ param.name }}")
             {%- elif param.in == 'query' %}
                 {%- if (param | map_type) == 'string'%}
-                param{{param.name | label}} = r.URL.Query().Get("{{ param.name }}")
+                param{{param.name | label}} = urlParams.Get("{{ param.name }}")
                 {%- else %}
-                if value, err := {{ param | from_string('queryParam(r, ' + (param.name | tojson) + ',' + (param.default | string | tojson) + ' )') }}; err == nil {
+                if value, err := {{ param | from_string('queryParam(urlParams, ' + (param.name | tojson) + ',' + (param.default | string | tojson) + ' )') }}; err == nil {
                     param{{param.name | label}} = {{ (param | map_type) }}(value)
                 } else {
                     log.Println("{{endpoint.operationId}}: decode {{param.name}} from query:", err)
@@ -174,9 +178,9 @@ func jsonError(w http.ResponseWriter, err string, code int) {
 	_ = encoder.Encode(&errMessage{Message: err})
 }
 
-func queryParam(r *http.Request, name string, defaultValue string) string {
-    if r.URL.Query.Has(name) {
-        return r.URL.Query.Get(name)
-    }
-    return defaultValue
+func queryParam(r url.Values, name string, defaultValue string) string {
+	if r.Has(name) {
+		return r.Get(name)
+	}
+	return defaultValue
 }
