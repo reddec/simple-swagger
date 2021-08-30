@@ -173,6 +173,14 @@ def main():
     env.filters['inside'] = lambda params, place: (p for p in params if p['in'] == place)
     swagger = safe_load(args.swagger.read_text())
 
+    # apply default security
+    default_security = swagger.get('security', [])
+    if len(default_security) > 0:
+        for methods in swagger.get('paths', {}).values():
+            for endpoint in methods.values():
+                if 'security' not in endpoint:
+                    endpoint['security'] = default_security
+
     enums = tuple(iter_enums(swagger))
 
     base_file = args.output / "interfaces.go"
