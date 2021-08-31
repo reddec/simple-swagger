@@ -175,7 +175,7 @@ def comment(text: str) -> str:
 
 def resolve(definition: dict, swagger: dict):
     if 'schema' in definition:
-        return resolve(definition['schema'])
+        return resolve(definition['schema'], swagger)
     if '$ref' in definition:
         name = definition['$ref'].split('/')[-1]
         return swagger['definitions'][name]
@@ -204,7 +204,7 @@ def main():
     env.filters['comment'] = comment
     env.filters['from_string'] = from_string
     env.filters['to_string'] = to_string
-    env.filters['default_value'] = default_value
+    env.filters['default_value'] = lambda x: default_value(x, swagger)
     env.filters['secured'] = lambda x: len(x.get('security', [])) > 0
     env.filters['sec_def'] = lambda x: swagger['securityDefinitions'][x]
     env.filters['resolve'] = lambda x: resolve(x, swagger)

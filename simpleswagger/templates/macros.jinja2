@@ -1,0 +1,40 @@
+
+{%- macro validate(definition, varname, ns="") %}
+    {%- if definition | is_ref_to_type  %}
+    if err := {{ varname }}.Validate(); err != nil {
+        return err
+    }
+    {%- endif %}
+    {%- if definition.type == 'object' %}
+        {%- for prop_name in (definition.required | default([])) %}
+            {%- set fieldDefinition = definition.properties[prop_name]  %}
+            if {{ varname }}.{{ prop_name | label }} == {{ fieldDefinition | default_value }} {
+                return &{{ ns }}ValidationError{Reason: "field '{{ prop_name }}' missed"}
+            }
+            {{ validate(fieldDefinition, (varname + "." + (prop_name | label)), ns) }}
+        {%- endfor %}
+    {%- elif definition.type == 'string' %}
+        {%- if 'pattern' in definition %}
+            {%- set patternName = (definition.pattern | patterns) %}
+            if !{{ patternName }}.MatchString(string({{ varname }})) {
+                return &{{ ns }}ValidationError{Reason: "not matched to pattern " + {{ patternName }}.String() }
+            }
+        {%- endif %}
+        {%- if 'minLength' in definition  %}
+            if len({{ varname }}) < {{ definition.minLength }} {
+                return &{{ ns }}ValidationError{Reason: "too short, required at least {{ definition.minLength }}"}
+            }
+        {%- endif %}
+        {%- if 'maxLength' in definition  %}
+            if len({{ varname }}) > {{ definition.maxLength }} {
+                return &{{ ns }}ValidationError{Reason: "too long, required at most {{ definition.maxLength }}"}
+            }
+        {%- endif %}
+    {%- elif definition.type == 'array' %}
+        {%- if definition["items"] | is_ref_to_type %}
+        for _, item := range {{ varname }} {
+            {{ validate(definition["items"], "item", ns) }}
+        }
+        {%- endif %}
+    {%- endif %}
+{%- endmacro %}
