@@ -6,11 +6,22 @@ import (
     "regexp"
 )
 
+var (
+{% for name, definition in swagger.definitions.items() %}
+    {# cache regexp #}
+    {%- if definition.type == 'string' %}
+        {%- if 'pattern' in definition %}
+            pattern{{ name }} = regexp.MustCompile({{ definition.pattern | tojson }})
+        {%- endif %}
+    {%- endif %}
+{% endfor %}
+)
+
 {% for name, definition in swagger.definitions.items() %}
     func (rec *{{ name }}) Validate() error {
         {%- if definition.type == 'object' %}
             {%- for prop_name in (definition.required | default([])) %}
-                {% set fieldDefinition = definition.properties[prop_name]  %}
+                {%- set fieldDefinition = definition.properties[prop_name]  %}
                 if rec.{{ prop_name | label }} == {{ fieldDefinition | default_value(swagger) }} {
                     return &ValidationError{Reason: "field '{{ prop_name }}' missed"}
                 }
@@ -22,8 +33,8 @@ import (
             {%- endfor %}
         {%- elif definition.type == 'string' %}
             {%- if 'pattern' in definition %}
-                if !regexp.MustCompile({{ definition.pattern | tojson }}).MatchString(string(*rec)) {
-                    return &ValidationError{Reason: "not matched to pattern " + {{ definition.pattern | tojson }} }
+                if !pattern{{ name }}.MatchString(string(*rec)) {
+                    return &ValidationError{Reason: "not matched to pattern " + pattern{{ name }}.String() }
                 }
             {%- endif %}
             {%- if 'minLength' in definition  %}
