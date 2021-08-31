@@ -12,6 +12,9 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// Prefix for base URL for API.
+const Prefix = "{{swagger.basePath}}"
+
 {% for name, definition in enums %}
     {%- if definition.description  %}
     {{ definition.description | comment}}
@@ -97,8 +100,6 @@ type API interface {
     }
 {%- endfor %}
 
-// Prefix for base URL for API.
-const Prefix = "{{swagger.basePath}}"
 
 type Error struct {
 	Status  int    `json:"-"`
