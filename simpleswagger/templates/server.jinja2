@@ -126,6 +126,13 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
                 }
                 {%- endif  %}
             {% endif %}
+            {%- if param | is_ref_to_type  %}
+            if err := param{{param.name | label}}.Validate(); err != nil {
+                log.Println("{{endpoint.operationId}}: validate {{param.name}}:", err)
+                jsonError(w, err.Error(), http.StatusUnprocessableEntity)
+                return
+            }
+            {%- endif %}
         {% endfor -%}
         {%- if endpoint | secured -%}
         ctx := context.WithValue(r.Context(), ctxKeyCredentials, credentials)

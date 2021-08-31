@@ -197,7 +197,7 @@ def main():
     env.filters['secured'] = lambda x: len(x.get('security', [])) > 0
     env.filters['sec_def'] = lambda x: swagger['securityDefinitions'][x]
     env.filters['has_payload'] = lambda x: any(param for param in x.get('parameters', []) if param['in'] == 'body')
-    env.filters['is_ref_to_type'] = lambda x: '$ref' in x
+    env.filters['is_ref_to_type'] = lambda x: '$ref' in x or '$ref' in x.get('schema', {})
     env.filters['has_query_params'] = lambda x: any(
         param for param in x.get('parameters', []) if param['in'] == 'query')
     # filter params by place (body, query, ...)
