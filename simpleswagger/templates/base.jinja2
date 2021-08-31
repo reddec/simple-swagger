@@ -58,6 +58,10 @@ import (
     {%- endif %}
 {% endfor %}
 
+{% for name, definition in type_aliases.items() %}
+    type {{ name }} {{ definition | map_type }}
+{% endfor %}
+
 // API methods.
 type API interface {
     {%- for path, methods in swagger.paths.items() %}
