@@ -185,6 +185,12 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
     {% endfor %}
 {% endfor %}
 
+var (
+{%- for pattern, name in patterns_cache.items() %}
+    {{ name }} = regexp.MustCompile({{ pattern | tojson }})
+{%- endfor %}
+)
+
 func autoError(w http.ResponseWriter, err error) {
 	if apiError, ok := api.AsAPIError(err); ok {
 		jsonError(w, apiError.Message, apiError.Status)
