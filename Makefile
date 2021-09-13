@@ -30,4 +30,9 @@ system-files: dirs
 install: build
 	PATH=$(OPATH) pip3 install --user --force-reinstall build/dist/simple_swagger-dev_*-py3-none-any.whl
 
+test-gen:
+	rm -rf test-api && mkdir -p test-api
+	echo 'module testapi' > test-api/go.mod
+	echo 'go 1.16' >> test-api/go.mod
+	./simpleswagger/generator.py -s test-data/swagger.yaml -o test-api
 .PHONY: all build docs

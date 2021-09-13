@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 from argparse import ArgumentParser
+from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from collections import defaultdict
 from subprocess import check_call, SubprocessError
 import sys
+from typing import Iterable, List, Set, Dict
+
 from jinja2 import Environment, FileSystemLoader
 from yaml import safe_load
 import re
@@ -149,6 +153,67 @@ def iter_enums(swagger: dict):
             yield name, definition
 
 
+@dataclass
+class Parameter:
+    name: str
+    type: dict
+    swagger: dict
+
+    def __post_init__(self):
+        if 'schema' in self.type:
+            self.type = self.type['schema']
+
+    @property
+    def go_type(self) -> str:
+        return map_type(self.type)
+
+
+@dataclass(frozen=True)
+class Method:
+    method: str
+    path: str
+    swagger: dict
+    definition: dict
+
+    @property
+    def has_tags(self) -> bool:
+        return len(self.tags) > 0
+
+    @property
+    def description(self) -> str:
+        return self.definition.get('description', '')
+
+    @property
+    def name(self) -> str:
+        return self.definition['operationId']
+
+    @property
+    def tags(self) -> List[str]:
+        return self.definition.get('tags', [])
+
+    @property
+    def has_response(self) -> bool:
+        return 200 in self.definition.get('responses', {})
+
+    @property
+    def response_type(self) -> dict:
+        return self.definition['responses'][200]['schema']
+
+    @cached_property
+    def parameters(self) -> List[Parameter]:
+        ans = []
+        for p in self.definition.get('parameters', []):
+            ans.append(Parameter(p['name'], p, swagger=self.swagger))
+        return ans
+
+
+def iter_methods(swagger: dict) -> Iterable[Method]:
+    # collect methods
+    for path, methods in swagger.get('paths', {}).items():
+        for method, defintion in methods.items():
+            yield Method(method, path, swagger, defintion)
+
+
 def cast(value, definition: dict) -> str:
     if definition.get('type') == 'string':
         return f'"{value}"'  # TODO: fix to proper escaping
@@ -227,7 +292,8 @@ def main():
                 if 'security' not in endpoint:
                     endpoint['security'] = default_security
 
-    enums = tuple(iter_enums(swagger))
+    methods = tuple(sorted(iter_methods(swagger), key=lambda m: m.name))
+    enums = tuple(sorted(iter_enums(swagger), key=lambda kv: kv[0]))
 
     base_file = args.output / "interfaces.go"
     validations_file = args.output / "validations.go"
@@ -239,13 +305,11 @@ def main():
     api_package = detect_package(args.output)
     package = api_package.split('/')[-1]
 
-    tags = defaultdict(set)
-    methods = {}
-    for http_methods in swagger.get('paths', {}).values():
-        for endpoint in http_methods.values():
-            methods[endpoint['operationId']] = endpoint
-            for tag in endpoint.get('tags', []):
-                tags[tag].add(endpoint['operationId'])
+    methods_by_tag: Dict[str, List[Method]] = defaultdict(list)
+    for method in methods:
+        for tag in method.tags:
+            methods_by_tag[tag].append(method)
+    methods_by_tag = dict(sorted(methods_by_tag.items(), key=lambda kv: kv[0]))
 
     type_aliases = dict((name, definition) for (name, definition) in swagger.get('definitions', {}).items()
                         if 'enum' not in definition and definition.get('type', '') != 'object')
@@ -260,7 +324,7 @@ def main():
         type_aliases=type_aliases,
         has_security=len(
             swagger.get('securityDefinitions', {})) > 0,
-        tags=tags,
+        tags=methods_by_tag,
         methods=methods,
     ))
 
@@ -274,7 +338,7 @@ def main():
         type_aliases=type_aliases,
         has_security=len(
             swagger.get('securityDefinitions', {})) > 0,
-        tags=tags,
+        tags=methods_by_tag,
         methods=methods,
         patterns_cache=patterns_cache,
     ))
