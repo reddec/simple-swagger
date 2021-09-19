@@ -10,7 +10,11 @@ import (
 	"net/http"
 	"net/url"
     api "{{ api_package }}"
-    {%  if has_security %}"errors"{% endif %}
+    {%-  if has_security %}
+        {%- if credential_type.import_path %}
+            {{ credential_type.package }} "{{ credential_type.import_path }}"
+        {%- endif %}
+    {%- endif %}
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -19,12 +23,12 @@ var ErrUnauthorized = errors.New("unauthorized request")
 
 type Security interface {
     {% for  name, definition in swagger.securityDefinitions.items() %}
-        AuthBy{{ name | label }}(value string) ({{ credential_type }}, error)
+        AuthBy{{ name | label }}(value string) ({{ credential_type.fqdn }}, error)
     {% endfor %}
 }
 
-func Credentials(ctx context.Context) {{ credential_type }} {
-    return ctx.Value(ctxKeyCredentials).({{ credential_type }})
+func Credentials(ctx context.Context) {{ credential_type.fqdn }} {
+    return ctx.Value(ctxKeyCredentials).({{ credential_type.fqdn }})
 }
 
 const ctxKeyCredentials = "credentials"
@@ -54,7 +58,7 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
 
         {% if endpoint | secured %}
             var (
-                credentials {{ credential_type }}
+                credentials {{ credential_type.fqdn }}
                 authorized bool
             )
             {% for security in endpoint.security %}

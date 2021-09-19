@@ -6,11 +6,40 @@ from pathlib import Path
 from collections import defaultdict
 from subprocess import check_call, SubprocessError
 import sys
-from typing import Iterable, List, Set, Dict
+from typing import Iterable, List, Set, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader
 from yaml import safe_load
 import re
+
+
+@dataclass(frozen=True)
+class GoType:
+    type: str
+    import_path: str = ''
+    suggested_package: Optional[str] = None
+
+    @property
+    def fqdn(self) -> str:
+        package = self.package
+        if package != "":
+            return package + '.' + self.type
+        return self.type
+
+    @property
+    def package(self) -> str:
+        if self.suggested_package is not None:
+            return self.suggested_package
+        if self.import_path != "":
+            return self.import_path.split('/')[-1].replace('-', '_').lower()
+        return ''
+
+    @staticmethod
+    def parse(qualified_name: str, suggested_package: Optional[str] = None) -> 'GoType':
+        if '.' in qualified_name:
+            imp, tp = qualified_name.rsplit('.', 1)
+            return GoType(tp, imp, suggested_package)
+        return GoType(qualified_name, suggested_package=suggested_package)
 
 
 def map_type(definition: dict, imported: bool = False):
@@ -282,7 +311,7 @@ def main():
     env.filters['inside'] = lambda params, place: (p for p in params if p['in'] == place)
     swagger = safe_load(args.swagger.read_text())
 
-    security_type = swagger.get('x-go-credential-type', args.credential)
+    security_type = GoType.parse(swagger.get('x-go-credential-type', args.credential), 'security')
 
     # apply default security
     default_security = swagger.get('security', [])
