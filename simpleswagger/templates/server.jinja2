@@ -34,6 +34,13 @@ func Credentials(ctx context.Context) {{ credential_type.fqdn }} {
 const ctxKeyCredentials = "credentials"
 {% endif %}
 
+
+func Install(mux interface {
+	Handle(pattern string, handler http.Handler)
+}, impl api.API{% if has_security %}, auth Security{% endif %}) {
+	mux.Handle(api.Prefix + "/", http.StripPrefix(api.Prefix, New(impl{% if has_security %}, auth{% endif %})))
+}
+
 func New(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handler {
      router := httprouter.New()
      srv := &server{impl: impl{% if has_security %}, auth: auth{% endif %}}
