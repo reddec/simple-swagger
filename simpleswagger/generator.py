@@ -225,6 +225,10 @@ class Method:
         return 200 in self.definition.get('responses', {})
 
     @property
+    def response_is_array(self) -> bool:
+        return self.definition.get('responses', {}).get(200, {}).get('schema', {}).get('type', '') == 'array'
+
+    @property
     def response_type(self) -> dict:
         return self.definition['responses'][200]['schema']
 
@@ -323,6 +327,7 @@ def main():
 
     methods = tuple(sorted(iter_methods(swagger), key=lambda m: m.name))
     enums = tuple(sorted(iter_enums(swagger), key=lambda kv: kv[0]))
+    methods_by_name: Dict[str, Method] = dict((m.name, m) for m in methods)
 
     base_file = args.output / "interfaces.go"
     validations_file = args.output / "validations.go"
@@ -382,6 +387,7 @@ def main():
         api_package=api_package,
         has_security=len(swagger.get('securityDefinitions', {})) > 0,
         patterns_cache=patterns_cache,
+        methods_by_name=methods_by_name,
     ))
 
     client_file.write_text(env.get_template('client.jinja2').render(

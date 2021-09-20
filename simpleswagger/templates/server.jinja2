@@ -60,6 +60,7 @@ type server struct {
 
 {%- for path, methods in swagger.paths.items() %}
     {%- for method, endpoint in methods.items() %}
+        {%- set METHOD = methods_by_name[endpoint.operationId]%}
 func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
         defer r.Body.Close()
 
@@ -163,6 +164,12 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
         {%- for param in endpoint.get('parameters', []) -%}
         , param{{param.name | label}}
         {%- endfor -%})
+
+        {%- if METHOD.response_is_array %}
+        if res == nil {
+            res = make({{METHOD.response_type | map_type(true)}}, 0)
+        }
+        {%- endif %}
 
         if err != nil {
             log.Println("{{endpoint.operationId}}: execute:", err)
