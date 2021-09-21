@@ -1,4 +1,5 @@
 from pathlib import Path
+from subprocess import check_call, SubprocessError
 
 from jinja2 import Environment
 
@@ -18,21 +19,35 @@ password	string	password	Used to hint UIs the input needs to be obscured.
 
 
 def map_basic_type(schema: dict) -> str:
+    if '$ref' in schema:
+        return schema['$ref'].split('/')[-1]
     type_def = (schema['type'], schema.get('format', ''))
     if type_def[0] == 'array':
-        return '[]' + map_basic_type(schema['items'])
+        return map_basic_type(schema['items']) + '[]'
     if type_def[0] in ('integer', 'number'):
         return 'number'
-    if type_def in (('string', '_'), ('string', 'binary'), ('string', 'byte'), ('string', 'password')):
+    if type_def in (('string', ''), ('string', 'binary'), ('string', 'byte'), ('string', 'password')):
         return 'string'
     if type_def[0] == 'boolean':
         return 'boolean'
     if type_def in (('string', 'date'), ('string', 'date-time')):
         return 'Date'
+    print("unknown basic type:", schema)
     return 'any'
 
 
-def render(schema: dict, env: Environment, output: Path):
+def render(swagger: dict, env: Environment, output: Path):
     env.filters['map_type'] = map_basic_type
     content = env.get_template('typescript/types.jinja2').render()
-    (output / "types.ts").write_text(content)
+    output.mkdir(parents=True, exist_ok=True)
+    types_file = (output / "index.ts")
+    types_file.write_text(content)
+
+    files = [
+        types_file
+    ]
+
+    try:
+        check_call(['prettier', '--write'] + [str(f) for f in files])
+    except (SubprocessError, FileNotFoundError) as err:
+        print("formatter not executed:", err)

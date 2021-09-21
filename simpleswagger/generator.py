@@ -39,10 +39,17 @@ class Parameter:
     name: str
     type: dict
     swagger: dict
+    definition: dict
 
     def __post_init__(self):
         if 'schema' in self.type:
             self.type = self.type['schema']
+
+
+@dataclass
+class PathPart:
+    value: str
+    param: Optional[Parameter] = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +62,13 @@ class Method:
     @property
     def has_tags(self) -> bool:
         return len(self.tags) > 0
+
+    @cached_property
+    def body(self) -> Optional[Parameter]:
+        for p in self.parameters:
+            if p.definition['in'] == 'body':
+                return p
+        return None
 
     @property
     def description(self) -> str:
@@ -84,8 +98,37 @@ class Method:
     def parameters(self) -> List[Parameter]:
         ans = []
         for p in self.definition.get('parameters', []):
-            ans.append(Parameter(p['name'], p, swagger=self.swagger))
+            ans.append(Parameter(p['name'], p, definition=p, swagger=self.swagger))
         return ans
+
+    def param_by_name(self, name: str) -> Optional[Parameter]:
+        for p in self.parameters:
+            if p.name == name:
+                return p
+        return None
+
+    @cached_property
+    def path_parts(self) -> List[PathPart]:
+        ans = []
+        for p in self.path.lstrip('/').split('/'):
+            if p.startswith('{') and p.endswith('}'):
+                param = self.param_by_name(p[1:-1].strip())
+                assert param is not None
+                ans.append(PathPart(p, param))
+            elif len(ans) > 0 and ans[-1].param is None:
+                # merge
+                ans[-1].value += '/' + p
+            else:
+                ans.append(PathPart('/' + p))
+        padded = []
+        for i, p in enumerate(ans):
+            if p.param is not None:
+                if i == 0 or ans[i - 1].param is not None:
+                    padded.append(PathPart('/'))
+                else:
+                    ans[i - 1].value += "/"
+            padded.append(p)
+        return padded
 
 
 def iter_methods(swagger: dict) -> Iterable[Method]:

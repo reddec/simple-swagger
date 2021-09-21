@@ -1,13 +1,76 @@
 {% for name, definition in objects.items() %}
-    {%- if definition.description %}
-        {{ definition.description | comment }}
+{%- if definition.description %}
+{{ definition.description | comment }}
+{%- endif %}
+export interface {{ name }} {
+{%- for prop_name, property in definition.properties.items() %}
+    {%- if property.description %}
+        {{ property.description | comment }}
     {%- endif %}
-    interface {{ name }} {
-    {%- for prop_name, property in definition.properties.items() %}
-        {%- if property.description %}
-            {{ property.description | comment }}
+    "{{ prop_name }}": {{ property | map_type }}
+{%- endfor %}
+}
+{% endfor %}
+
+export class APIError extends Error {
+    constructor(message:string){
+        super(message)
+    }
+}
+
+const basePath = "{{ swagger.basePath }}"
+
+export class API {
+
+    private readonly baseURL:string
+
+    constructor(baseURL: string = ".") {
+        this.baseURL = baseURL + basePath
+    }
+
+{% for method in methods  %}
+    {{ (method.description or method.name) | comment }}
+    async {{ method.name }}(
+    {%- for param in method.parameters -%}
+    {%- if not loop.first -%}, {%- endif -%}
+    {{ param.name }}: {{ param.type | map_type }}
+    {%- endfor -%}
+    ): Promise<{% if method.has_response %}{{ method.response_type | map_type }}{% else %}void{% endif %}> {
+        const _url = this.baseURL  {%- for part in method.path_parts -%} +
+        {%- if part.param -%}
+            encodeURIComponent({{ part.param.name }})
+        {%- else -%}
+            "{{ part.value }}"
+        {%- endif -%}
+        {%- endfor %}
+        const _res = await fetch(_url, {
+            {%- if method.body %}
+            body: JSON.stringify({{ method.body.name }}),
+            headers: {
+                "Content-Type":"application/json"
+            },
+            {%- endif %}
+            method: "{{ method.method | upper }}"
+        })
+        await raiseAPIErrorIfNotSuccess(_res)
+
+        {%- if method.has_response %}
+        return (await _res.json())
         {%- endif %}
-        {{ prop_name | label }} {{ property | map_type }}
-    {%- endfor %}
     }
 {% endfor %}
+}
+
+async function raiseAPIErrorIfNotSuccess(res:Response) {
+    if(res.ok){
+        return
+    }
+    const text = await res.text()
+    let err;
+    try {
+        err = new APIError(JSON.parse(text).message || text)
+    } catch (e) {
+        err = new Error(text)
+    }
+    throw err;
+}
