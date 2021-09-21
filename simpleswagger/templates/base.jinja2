@@ -69,7 +69,7 @@ const Prefix = "{{ swagger.basePath }}"
     {{ method.description | comment }}
     {{ method.name | label }}(ctx context.Context
     {%- for param in method.parameters -%}
-        , {{ param.name | private }} {{ param.go_type }}
+        , {{ param.name | private }} {{ param.type | map_type }}
     {%- endfor -%}
     )
     {%- if method.has_response %} ({{ method.response_type | map_type }}, error)

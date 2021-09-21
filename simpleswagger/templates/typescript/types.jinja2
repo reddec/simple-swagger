@@ -1,0 +1,13 @@
+{% for name, definition in objects.items() %}
+    {%- if definition.description %}
+        {{ definition.description | comment }}
+    {%- endif %}
+    interface {{ name }} {
+    {%- for prop_name, property in definition.properties.items() %}
+        {%- if property.description %}
+            {{ property.description | comment }}
+        {%- endif %}
+        {{ prop_name | label }} {{ property | map_type }}
+    {%- endfor %}
+    }
+{% endfor %}
