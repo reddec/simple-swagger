@@ -1,31 +1,13 @@
 #!/usr/bin/env python3
 from argparse import ArgumentParser
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from collections import defaultdict
-from subprocess import check_call, SubprocessError
-import sys
-from typing import Iterable, List, Set, Dict, Optional
+from typing import Iterable, List, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader
 from yaml import safe_load
-import re
-
-
-def detect_package(location: Path) -> str:
-    if not location.is_absolute():
-        location = location.absolute()
-    if location.parent == location:
-        raise FileNotFoundError("go.mod not found in all hierarchy")
-
-    go_mod = location / 'go.mod'
-    try:
-        content = go_mod.read_text()
-        return re.findall(r'^module\s+"?(.*?)"?$', content, re.MULTILINE | re.DOTALL)[0]
-
-    except FileNotFoundError:
-        return detect_package(location.parent) + "/" + location.name
 
 
 def iter_enums(swagger: dict):
@@ -93,6 +75,10 @@ class Method:
     @property
     def response_type(self) -> dict:
         return self.definition['responses'][200]['schema']
+
+    @property
+    def secured(self) -> bool:
+        return len(self.definition.get('security', [])) > 0
 
     @cached_property
     def parameters(self) -> List[Parameter]:
@@ -209,6 +195,10 @@ def resolve(definition: dict, swagger: dict):
     return definition
 
 
+def pascal_case(text: str) -> str:
+    return "".join(x[:1].upper() + x[1:] for x in text.split('_'))
+
+
 def main():
     parser = ArgumentParser(description='Zombie swagger 2.0')
     parser.add_argument('--swagger', '-s', type=Path, default=(Path.cwd() / "swagger.yaml"),
@@ -223,6 +213,7 @@ def main():
     env = Environment(loader=FileSystemLoader(args.templates))
     env.filters['cast'] = cast
     env.filters['comment'] = comment
+    env.filters['pascal'] = pascal_case
     env.filters['secured'] = lambda x: len(x.get('security', [])) > 0
     env.filters['sec_def'] = lambda x: swagger['securityDefinitions'][x]
     env.filters['resolve'] = lambda x: resolve(x, swagger)

@@ -20,12 +20,32 @@ export class APIError extends Error {
 
 const basePath = "{{ swagger.basePath }}"
 
+export type PreHook = (req:RequestInit)=>void;
+
+{%  if has_security %}
+    {% for  name, definition in swagger.securityDefinitions.items() %}
+        {%- set def = (name | sec_def) -%}
+        function AuthBy{{ name | pascal }}(cred: string): PreHook {
+            return (req)=>{
+                {% if  def["in"] == 'header' -%}
+                    if(!req.headers){
+                          req.headers = {}
+                      }
+                        (req.headers as any)["{{ def.name }}"]= cred
+                    {% endif -%}
+            }
+        }
+    {% endfor %}
+{% endif %}
+
 export class API {
 
     private readonly baseURL:string
+    private readonly hooks: PreHook[];
 
-    constructor(baseURL: string = ".") {
+    constructor(baseURL: string = ".", ...hooks: PreHook[]) {
         this.baseURL = baseURL + basePath
+        this.hooks = hooks || []
     }
 
 {% for method in methods  %}
@@ -43,7 +63,7 @@ export class API {
             "{{ part.value }}"
         {%- endif -%}
         {%- endfor %}
-        const _res = await fetch(_url, {
+        const _req = {
             {%- if method.body %}
             body: JSON.stringify({{ method.body.name }}),
             headers: {
@@ -51,7 +71,9 @@ export class API {
             },
             {%- endif %}
             method: "{{ method.method | upper }}"
-        })
+        }
+        this.hooks.forEach((f)=>f(_req))
+        const _res = await fetch(_url, _req)
         await raiseAPIErrorIfNotSuccess(_res)
 
         {%- if method.has_response %}
