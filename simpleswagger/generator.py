@@ -265,10 +265,10 @@ def main():
     lang = args.lang
 
     if lang == 'golang':
-        from golang import render
+        from .golang import render
         render(swagger, env, args.output)
     elif lang == 'typescript':
-        from typescript import render
+        from .typescript import render
         render(swagger, env, args.output)
     else:
         raise AssertionError('unknown language ' + lang)
