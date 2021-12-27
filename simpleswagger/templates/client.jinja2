@@ -97,10 +97,14 @@ func (client *Client) With(options ...Option) *Client {
                     {%- if param.in == 'path' %}
                         requestURL = strings.ReplaceAll(requestURL, "{{ '{' + param.name +'}' }}", url.PathEscape({{ param | to_string(param.name | private) }}))
                     {%- elif param.in == 'body' %}
+                        {% if not endpoint.get('consumes', []) or 'application/json' in endpoint.get('consumes', []) %}
                         if err = json.NewEncoder(&body).Encode({{ param.name | private }}); err != nil {
                             err = fmt.Errorf("encode {{ param.name }}: %w", err)
                             return
                         }
+                        {% elif  'text/plain' in endpoint.get('consumes', []) and (param | map_type) == 'string' %}
+                        _, _ = body.WriteString({{ param.name | private }})
+                        {% endif %}
                     {% endif %}
                 {%- endfor %}
 
@@ -120,7 +124,7 @@ func (client *Client) With(options ...Option) *Client {
                     {% endif %}
                 {%- endfor %}
 
-                {%- if endpoint | has_payload %}
+                {%- if endpoint | has_payload and (not endpoint.get('consumes', []) or 'application/json' in endpoint.get('consumes', [])) %}
                 req.Header.Set("Content-Type", "application/json")
                 {%- endif %}
                 {% if endpoint | secured %}

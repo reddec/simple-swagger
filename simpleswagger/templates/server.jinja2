@@ -9,6 +9,7 @@ import (
     "errors"
 	"net/http"
 	"net/url"
+    "io/ioutil"
     api "{{ api_package }}"
     {%  if has_security %}"errors"{% endif %}
 	"github.com/julienschmidt/httprouter"
@@ -107,11 +108,37 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
                     {%- endif  %}
                 }
             {%- elif param.in == 'body' %}
+                {% if endpoint.get('consumes', []) %}
+                switch contentType := r.Header.Get("Content-Type"); contentType {
+                    {% if "appliction/json" in endpoint.get('consumes', []) %}
+                case "application/json":
+                    if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
+                        log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
+                        jsonError(w, err.Error(), http.StatusBadRequest)
+                        return
+                    }
+                    {% elif "text/plain" in endpoint.get('consumes', []) and (param | map_type) == 'string' %}
+                case "text/plain", "":
+                    if content, err := ioutil.ReadAll(r.Body); err != nil {
+                        log.Println("{{endpoint.operationId}}: read {{param.name}} from body:", err)
+                        jsonError(w, err.Error(), http.StatusBadRequest)
+                        return
+                    } else {
+                        param{{param.name | label}} = string(content)
+                    }
+                    {% endif %}
+                default:
+                    log.Println("{{endpoint.operationId}}: {{param.name}} from body has unsupported content-type", contentType)
+                    jsonError(w, "unsupported or undefined content-type", http.StatusUnsupportedMediaType)
+                    return
+                }
+                {% else %}
                 if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
                     log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
                     jsonError(w, err.Error(), http.StatusBadRequest)
                     return
                 }
+                {% endif %}
             {%- elif param.in == 'header' %}
                 param{{param.name | label}} = r.Header.Get("{{ param.name }}")
             {%- elif param.in == 'query' %}
