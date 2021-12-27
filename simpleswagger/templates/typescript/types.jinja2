@@ -1,0 +1,98 @@
+{% for name, definition in objects.items() %}
+{%- if definition.description %}
+{{ definition.description | comment }}
+{%- endif %}
+export interface {{ name }} {
+{%- for prop_name, property in definition.properties.items() %}
+    {%- if property.description %}
+        {{ property.description | comment }}
+    {%- endif %}
+    "{{ prop_name }}": {{ property | map_type }}
+{%- endfor %}
+}
+{% endfor %}
+
+export class APIError extends Error {
+    constructor(message:string){
+        super(message)
+    }
+}
+
+const basePath = "{{ swagger.basePath }}"
+
+export type PreHook = (req:RequestInit)=>void;
+
+{%  if has_security %}
+    {% for  name, definition in swagger.securityDefinitions.items() %}
+        {%- set def = (name | sec_def) -%}
+        function AuthBy{{ name | pascal }}(cred: string): PreHook {
+            return (req)=>{
+                {% if  def["in"] == 'header' -%}
+                    if(!req.headers){
+                          req.headers = {}
+                      }
+                        (req.headers as any)["{{ def.name }}"]= cred
+                    {% endif -%}
+            }
+        }
+    {% endfor %}
+{% endif %}
+
+export class API {
+
+    private readonly baseURL:string
+    private readonly hooks: PreHook[];
+
+    constructor(baseURL: string = ".", ...hooks: PreHook[]) {
+        this.baseURL = baseURL + basePath
+        this.hooks = hooks || []
+    }
+
+{% for method in methods  %}
+    {{ (method.description or method.name) | comment }}
+    async {{ method.name }}(
+    {%- for param in method.parameters -%}
+    {%- if not loop.first -%}, {%- endif -%}
+    {{ param.name }}: {{ param.type | map_type }}
+    {%- endfor -%}
+    ): Promise<{% if method.has_response %}{{ method.response_type | map_type }}{% else %}void{% endif %}> {
+        const _url = this.baseURL  {%- for part in method.path_parts -%} +
+        {%- if part.param -%}
+            encodeURIComponent({{ part.param.name }})
+        {%- else -%}
+            "{{ part.value }}"
+        {%- endif -%}
+        {%- endfor %}
+        const _req = {
+            {%- if method.body %}
+            body: JSON.stringify({{ method.body.name }}),
+            headers: {
+                "Content-Type":"application/json"
+            },
+            {%- endif %}
+            method: "{{ method.method | upper }}"
+        }
+        this.hooks.forEach((f)=>f(_req))
+        const _res = await fetch(_url, _req)
+        await raiseAPIErrorIfNotSuccess(_res)
+
+        {%- if method.has_response %}
+        return (await _res.json())
+        {%- endif %}
+    }
+{% endfor %}
+}
+
+async function raiseAPIErrorIfNotSuccess(res:Response) {
+    if(res.ok){
+        return
+    }
+    const text = await res.text()
+    let err;
+    try {
+        err = new APIError(JSON.parse(text).error || text)
+    } catch (e) {
+        err = new Error(text)
+    }
+    throw err;
+}

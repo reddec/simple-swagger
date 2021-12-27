@@ -11,7 +11,11 @@ import (
 	"net/url"
     "io/ioutil"
     api "{{ api_package }}"
-    {%  if has_security %}"errors"{% endif %}
+    {%-  if has_security %}
+        {%- if credential_type.import_path %}
+            {{ credential_type.package }} "{{ credential_type.import_path }}"
+        {%- endif %}
+    {%- endif %}
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -20,16 +24,23 @@ var ErrUnauthorized = errors.New("unauthorized request")
 
 type Security interface {
     {% for  name, definition in swagger.securityDefinitions.items() %}
-        AuthBy{{ name | label }}(value string) ({{ credential_type }}, error)
+        AuthBy{{ name | label }}(value string) ({{ credential_type.fqdn }}, error)
     {% endfor %}
 }
 
-func Credentials(ctx context.Context) {{ credential_type }} {
-    return ctx.Value(ctxKeyCredentials).({{ credential_type }})
+func Credentials(ctx context.Context) {{ credential_type.fqdn }} {
+    return ctx.Value(ctxKeyCredentials).({{ credential_type.fqdn }})
 }
 
 const ctxKeyCredentials = "credentials"
 {% endif %}
+
+
+func Install(mux interface {
+	Handle(pattern string, handler http.Handler)
+}, impl api.API{% if has_security %}, auth Security{% endif %}) {
+	mux.Handle(api.Prefix + "/", http.StripPrefix(api.Prefix, New(impl{% if has_security %}, auth{% endif %})))
+}
 
 func New(impl api.API{% if has_security %}, auth Security{% endif %}) http.Handler {
      router := httprouter.New()
@@ -50,12 +61,13 @@ type server struct {
 
 {%- for path, methods in swagger.paths.items() %}
     {%- for method, endpoint in methods.items() %}
+        {%- set METHOD = methods_by_name[endpoint.operationId]%}
 func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
         defer r.Body.Close()
 
         {% if endpoint | secured %}
             var (
-                credentials {{ credential_type }}
+                credentials {{ credential_type.fqdn }}
                 authorized bool
             )
             {% for security in endpoint.security %}
@@ -180,6 +192,12 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
         , param{{param.name | label}}
         {%- endfor -%})
 
+        {%- if METHOD.response_is_array %}
+        if res == nil {
+            res = make({{METHOD.response_type | map_type(true)}}, 0)
+        }
+        {%- endif %}
+
         if err != nil {
             log.Println("{{endpoint.operationId}}: execute:", err)
             autoError(w, err)
@@ -211,6 +229,12 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
     }
     {% endfor %}
 {% endfor %}
+
+var (
+{%- for pattern, name in patterns_cache.items() %}
+    {{ name }} = regexp.MustCompile({{ pattern | tojson }})
+{%- endfor %}
+)
 
 func autoError(w http.ResponseWriter, err error) {
 	if apiError, ok := api.AsAPIError(err); ok {

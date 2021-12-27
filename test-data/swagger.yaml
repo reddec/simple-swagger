@@ -1,0 +1,414 @@
+swagger: "2.0"
+info:
+  description: "Pikocloud API"
+  version: "1.0.0"
+  title: "pikocloud"
+  license:
+    name: "MIT"
+basePath: "/api"
+x-go-credential-type: api.Session
+securityDefinitions:
+  token:
+    name: X-API-Key
+    description: |
+      By JWT. Use /login to get token
+    in: header
+    type: apiKey
+security:
+  - token: [ ]
+paths:
+  "/login":
+    post:
+      tags:
+        - auth
+      security: [ ] # disable auth for login
+      operationId: login
+      description: |
+        Login by credentials.
+        Issues bearer token with fixed validity time
+      parameters:
+        - in: body
+          required: true
+          name: credential
+          schema:
+            $ref: "#/definitions/Credential"
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/Token"
+  "/me":
+    get:
+      tags:
+        - auth
+      operationId: me
+      description: |
+        Get current authorized user
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/User"
+
+  "/users":
+    get:
+      tags:
+        - auth
+      operationId: users
+      description: |
+        List users
+      responses:
+        200:
+          description: OK
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/User"
+    post:
+      tags:
+        - auth
+      operationId: createUser
+      description: |
+        Create user
+      parameters:
+        - in: body
+          required: true
+          name: userDraft
+          schema:
+            $ref: "#/definitions/UserDraft"
+      responses:
+        204:
+          description: OK
+
+  "/users/{userName}":
+    delete:
+      tags:
+        - auth
+      operationId: removeUser
+      description: |
+        Remove user
+      parameters:
+        - in: path
+          name: userName
+          required: true
+          type: string
+      responses:
+        204:
+          description: OK
+
+  "/users/{userName}/secret":
+    put:
+      tags:
+        - auth
+      operationId: changeSecret
+      description: |
+        Change user secret
+      parameters:
+        - in: path
+          name: userName
+          required: true
+          type: string
+        - in: body
+          name: secret
+          required: true
+          schema:
+            type: string
+      responses:
+        204:
+          description: OK
+
+  "/dashboard":
+    get:
+      tags:
+        - dashboard
+      operationId: dashboard
+      description:
+        Get dashboard
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/Dashboard"
+
+  "/dashboard/resources":
+    post:
+      tags:
+        - dashboard
+      operationId: setDashboard
+      description:
+        Replace dashboard resources
+      parameters:
+        - in: body
+          name: "resources"
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/Resource"
+      responses:
+        204:
+          description: OK
+
+  "/services":
+    get:
+      tags:
+        - service
+      operationId: services
+      description:
+        List services within compose file
+      responses:
+        200:
+          description: OK
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/Service"
+
+  "/services/{serviceName}/{containerID}/logs":
+    get:
+      tags:
+        - service
+      operationId: logs
+      description: |
+        Get service logs with offset if needed
+      parameters:
+        - in: path
+          type: string
+          name: serviceName
+          required: true
+          description: Service name to alter
+        - in: path
+          type: string
+          name: containerID
+          required: true
+          description: Container ID
+        - in: query
+          type: integer
+          name: offset
+          minimum: 0
+          default: 0
+          description: Number of lines to skip
+        - in: query
+          type: integer
+          name: limit
+          minimum: 0
+          default: 100
+          description: Number of lines to return
+      responses:
+        200:
+          description: OK
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/LogEntry'
+
+  "/services/{serviceName}/running":
+    post:
+      tags:
+        - service
+      operationId: startService
+      description: |
+        Start service. Does nothing if service already stopped.
+      parameters:
+        - in: path
+          type: string
+          name: serviceName
+          required: true
+          description: Service name to alter
+      responses:
+        204:
+          description: OK
+
+    delete:
+      tags:
+        - service
+      operationId: stopService
+      description: |
+        Stop service.  Does nothing if service already stopped.
+      parameters:
+        - in: path
+          type: string
+          name: serviceName
+          required: true
+          description: Service name to alter
+      responses:
+        204:
+          description: OK
+
+  "/router/routes":
+    get:
+      tags:
+        - router
+      operationId: routes
+      description: |
+        Routes defined in the platform
+      responses:
+        200:
+          description: OK
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/Route"
+    post:
+      tags:
+        - router
+      operationId: setRoutes
+      description: |
+        Set routing table
+      parameters:
+        - in: body
+          required: true
+          name: routes
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/Route"
+      responses:
+        204:
+          description: OK
+
+    # TODO: backups
+    # TODO: metrics
+definitions:
+  Service:
+    type: object
+    description: |
+      Service in compose file.
+      May contain multiple containers due to scale factor.
+    properties:
+      name:
+        type: string
+      containers:
+        type: array
+        items:
+          $ref: "#/definitions/Container"
+
+  Container:
+    type: object
+    properties:
+      id:
+        type: string
+      running:
+        type: boolean
+
+  Dashboard:
+    type: object
+    description: |
+      Dashboard for quick access to resources.
+      Contains user-defined tiles with information.
+    properties:
+      project:
+        type: string
+      resources:
+        type: array
+        items:
+          $ref: '#/definitions/Resource'
+
+  Resource:
+    type: object
+    properties:
+      title:
+        type: string
+      description:
+        type: string
+      link:
+        type: string
+    required:
+      - link
+
+  Token:
+    type: object
+    properties:
+      name:
+        $ref: '#/definitions/UserName'
+      secret:
+        type: string
+      expired_at:
+        type: integer
+        format: int64
+      issued_at:
+        type: integer
+        format: int64
+
+  Credential:
+    type: object
+    properties:
+      name:
+        $ref: '#/definitions/UserName'
+
+      secret:
+        type: string
+    required:
+      - name
+      - secret
+
+  UserName:
+    type: string
+    pattern: "^[a-zA-Z0-9-.]+$"
+    minLength: 3
+    maxLength: 16
+
+  User:
+    type: object
+    properties:
+      name:
+        $ref: '#/definitions/UserName'
+      created_at:
+        type: integer
+        format: int64
+    required:
+      - name
+      - created_at
+
+  UserDraft:
+    type: object
+    properties:
+      name:
+        $ref: '#/definitions/UserName'
+      secret:
+        type: string
+    required:
+      - name
+      - secret
+
+  LogStream:
+    type: string
+    enum:
+      - stdout
+      - stderr
+
+  LogEntry:
+    type: object
+    properties:
+      stream:
+        $ref: '#/definitions/LogStream'
+      message:
+        type: string
+
+  Route:
+    type: object
+    properties:
+      domain:
+        type: string
+        pattern: ^[a-zA-Z0-9][a-zA-Z0-9-.]{1,65}$
+        example: "app.example.com"
+        description: Domain name. Empty means any domain.
+      source_path:
+        type: string
+        minLength: 1
+        example: "/"
+        pattern: ^/[/a-zA-Z0-9:.-]*$
+      target_url:
+        type: string
+        example: "http://app:8080/"
+        pattern: ^(http|https)://.+$
+      rewrite:
+        type: boolean
+        description: If true request will be proxied to the target url without source path prefix
+      comment:
+        type: string
+      tls:
+        type: boolean
+        description: Enable automatic TLS by Let's encrypt
+    required:
+      - source_path
+      - target_url

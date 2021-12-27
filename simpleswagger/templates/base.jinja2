@@ -1,62 +1,62 @@
 {{ header }}
-package {{package}}
+package {{ package }}
 
 import (
-	"context"
-	"encoding/json"
-	"log"
-    "errors"
-	"net/http"
-	"net/url"
-    "time"
-	"github.com/julienschmidt/httprouter"
+"context"
+"encoding/json"
+"log"
+"errors"
+"net/http"
+"net/url"
+"time"
+"github.com/julienschmidt/httprouter"
 )
 
 // Prefix for base URL for API.
-const Prefix = "{{swagger.basePath}}"
+const Prefix = "{{ swagger.basePath }}"
 
 {% for name, definition in enums %}
-    {%- if definition.description  %}
-    {{ definition.description | comment}}
-    {%- endif  %}
+    {%- if definition.description %}
+        {{ definition.description | comment }}
+    {%- endif %}
     type {{ name }} {{ definition | map_type }}
     const (
     {%- for option in definition.enum %}
-         {{ name }}{{ option | label }} {{ name }} = {{ option | cast(definition) }}
+        {{ name }}{{ option | label }} {{ name }} = {{ option | cast(definition) }}
     {%- endfor %}
     )
 
     {% if (definition | map_type) == 'string' %}
 
-    var ErrParse{{ name }} = errors.New("un-parsable {{ name }}")
+        var ErrParse{{ name }} = errors.New("un-parsable {{ name }}")
 
-    func (v *{{ name }}) UnmarshalText(text []byte) error {
+        func (v *{{ name }}) UnmarshalText(text []byte) error {
         switch string(text) {
-            {%- for option in definition.enum %}
-                 case {{ option | cast(definition) }}:
-                   *v = {{ name }}{{ option | label }}
-            {%- endfor %}
-                default:
-                    return  ErrParse{{ name }}
+        {%- for option in definition.enum %}
+            case {{ option | cast(definition) }}:
+            *v = {{ name }}{{ option | label }}
+        {%- endfor %}
+        default:
+        return  ErrParse{{ name }}
         }
         return nil
-    }
+        }
     {% endif %}
 
 {% endfor %}
 
 {% for name, definition in swagger.definitions.items() %}
     {%- if definition.type == 'object' %}
-        {%- if definition.description  %}
-            {{ definition.description | comment}}
-        {%- endif  %}
-        type {{name}} struct {
-            {%- for prop_name, property in definition.properties.items() %}
-                {%- if property.description  %}
-                    {{ property.description | comment}}
-                {%- endif  %}
-                {{prop_name | label}} {{property | map_type}} `json:"{{prop_name}},omitempty"`
-            {%- endfor %}
+        {%- if definition.description %}
+            {{ definition.description | comment }}
+        {%- endif %}
+        type {{ name }} struct {
+        {%- for prop_name, property in definition.properties.items() %}
+            {%- if property.description %}
+                {{ property.description | comment }}
+            {%- endif %}
+            {{ prop_name | label }} {{ property | map_type }} `json:"{{ prop_name }},omitempty"`
+        {%- endfor %}
         }
     {%- endif %}
 {% endfor %}
@@ -65,55 +65,54 @@ const Prefix = "{{swagger.basePath}}"
     type {{ name }} {{ definition | map_type }}
 {% endfor %}
 
+{%- macro defineMethod(method) -%}
+    {{ method.description | comment }}
+    {{ method.name | label }}(ctx context.Context
+    {%- for param in method.parameters -%}
+        , {{ param.name | private }} {{ param.type | map_type }}
+    {%- endfor -%}
+    )
+    {%- if method.has_response %} ({{ method.response_type | map_type }}, error)
+    {%- else %} error
+    {%- endif %}
+{%- endmacro -%}
+
 // API methods.
 type API interface {
-    {%- for path, methods in swagger.paths.items() %}
-        {%- for method, endpoint in methods.items() %}
-        {{endpoint.description | comment }}
-        {{endpoint.operationId | label}}(ctx context.Context
-        {%- for param in endpoint.get('parameters', []) -%}
-        , {{param.name | private}} {{param | map_type}}
-        {%- endfor -%}
-        )
-            {%- if 204 in endpoint.responses %} error
-            {%- else %} ({{endpoint.responses.200.schema | map_type}}, error)
-            {%- endif %}
-        {%- endfor %}
-    {%- endfor %}
+{%- for method in methods %}
+    {%- if not method.has_tags %}
+        {{ defineMethod(method) }}
+    {%- endif %}
+{%- endfor %}
+
+{%- for tag in tags %}
+    {{ tag | label }}API
+{%- endfor %}
 }
 
-{%- for tag, operations in tags.items() %}
+{%- for tag, methods in tags.items() %}
     // Subset for API for tag '{{ tag }}'
     type {{ tag | label }}API interface {
-        {%- for operation in operations %}
-            {%- set endpoint = methods[operation]  %}
-            {{endpoint.description | comment }}
-            {{endpoint.operationId | label}}(ctx context.Context
-            {%- for param in endpoint.get('parameters', []) -%}
-            , {{param.name | private}} {{param | map_type}}
-            {%- endfor -%}
-            )
-            {%- if 204 in endpoint.responses %} error
-            {%- else %} ({{endpoint.responses.200.schema | map_type}}, error)
-            {%- endif %}
-        {%- endfor %}
+    {%- for method in methods %}
+        {{ defineMethod(method) }}
+    {%- endfor %}
     }
 {%- endfor %}
 
 
 type Error struct {
-	Status  int    `json:"-"`
-	Message string `json:"error"`
+Status  int    `json:"-"`
+Message string `json:"error"`
 }
 
 func (err *Error) Error() string {
-	return err.Message
+return err.Message
 }
 
 func AsAPIError(err error) (*Error, bool) {
-	var apiError *Error
-	if errors.As(err, &apiError) {
-		return apiError, true
-	}
-	return nil, false
+var apiError *Error
+if errors.As(err, &apiError) {
+return apiError, true
+}
+return nil, false
 }
