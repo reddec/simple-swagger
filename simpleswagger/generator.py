@@ -16,12 +16,31 @@ def iter_enums(swagger: dict):
             yield name, definition
 
 
+def calc_endpoint_name(method: str, path: str) -> str:
+    chops = [method.title()]
+    for x in path.split('/'):
+        if x.startswith('{'):
+            param = x[1:-1].strip()
+            chops.append("By" + param.title())
+        else:
+            chops.append(x.title())
+    return "".join(chops)
+
+
 @dataclass
 class Parameter:
     name: str
     type: dict
     swagger: dict
     definition: dict
+
+    @property
+    def location(self) -> str:
+        return self.definition['in']
+
+    @property
+    def is_ref(self) -> bool:
+        return '$ref' in self.type
 
     def __post_init__(self):
         if 'schema' in self.type:
@@ -56,9 +75,9 @@ class Method:
     def description(self) -> str:
         return self.definition.get('description', '')
 
-    @property
+    @cached_property
     def name(self) -> str:
-        return self.definition['operationId']
+        return self.definition.get('operationId') or calc_endpoint_name(self.method, self.path)
 
     @property
     def tags(self) -> List[str]:
@@ -81,11 +100,31 @@ class Method:
         return len(self.definition.get('security', [])) > 0
 
     @cached_property
+    def has_query_params(self) -> bool:
+        return any(x for x in self.parameters if x.location == 'query')
+
+    @property
+    def security(self) -> List:
+        return self.definition.get('security', [])
+
+    @cached_property
     def parameters(self) -> List[Parameter]:
         ans = []
         for p in self.definition.get('parameters', []):
             ans.append(Parameter(p['name'], p, definition=p, swagger=self.swagger))
         return ans
+
+    @cached_property
+    def consumes(self) -> List[str]:
+        return self.definition.get('consumes', []) or ['application/json']
+
+    @cached_property
+    def consumes_json(self) -> bool:
+        return 'application/json' in self.consumes
+
+    @cached_property
+    def consumes_text(self) -> bool:
+        return 'text/plain' in self.consumes
 
     def param_by_name(self, name: str) -> Optional[Parameter]:
         for p in self.parameters:
@@ -233,7 +272,13 @@ def main():
                 if 'security' not in endpoint:
                     endpoint['security'] = default_security
 
-    # remove anonymous object definitions
+    # calculated missed operationId
+    for path, pathDef in swagger.get('paths', {}).items():
+        for method, endpoint in pathDef.items():
+            if 'operationId' not in endpoint:
+                endpoint['operationId'] = calc_endpoint_name(method, path)
+
+                # remove anonymous object definitions
     move_objects_to_definitions(swagger)
 
     methods = tuple(sorted(iter_methods(swagger), key=lambda m: m.name))

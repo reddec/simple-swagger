@@ -59,18 +59,17 @@ type server struct {
     {% if has_security %}auth Security{% endif %}
 }
 
-{%- for path, methods in swagger.paths.items() %}
-    {%- for method, endpoint in methods.items() %}
-        {%- set METHOD = methods_by_name[endpoint.operationId]%}
-func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+{%- for method in methods %}
+        {%- set METHOD = method%}
+func (srv *server) {{method.name | label}}(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
         defer r.Body.Close()
 
-        {% if endpoint | secured %}
+        {% if method.secured %}
             var (
                 credentials {{ credential_type.fqdn }}
                 authorized bool
             )
-            {% for security in endpoint.security %}
+            {% for security in method.security %}
                 {%- if not loop.first %} else {% endif -%}
                 {%- set sec_name = security.keys() | first -%}
                 {%- set def = (sec_name | sec_def) -%}
@@ -86,81 +85,72 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
             {% endfor %}
 
             if !authorized {
-                log.Println("{{endpoint.operationId}}: authorization failed")
+                log.Println("{{method.name}}: authorization failed")
                 jsonError(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
                 return
             }
         {% endif %}
 
-        {% for param in endpoint.get('parameters', []) -%}
-        var param{{param.name | label}} {{param | map_type(true)}} // in {{param.in}}
+        {% for param in method.parameters -%}
+        var param{{param.name | label}} {{param.type | map_type(true)}} // in {{param.location}}
         {% endfor -%}
 
-        {%- if (endpoint | has_query_params) %}
+        {%- if method.has_query_params %}
         var urlParams = r.URL.Query()
         {%- endif %}
 
-        {% for param in endpoint.get('parameters', []) -%}
-            {%- if param.in == 'path' %}
+        {% for param in method.parameters -%}
+            {%- if param.location == 'path' %}
                 if v, err := url.PathUnescape(ps.ByName("{{param.name}}")); err != nil{
-                     log.Println("{{endpoint.operationId}}: decode {{param.name}} from path:", err)
+                     log.Println("{{method.name}}: decode {{param.name}} from path:", err)
                      jsonError(w, err.Error(), http.StatusBadRequest)
                      return
                 }  else {
-                    {%- if (param | map_type) == 'string'%}
+                    {%- if (param.type | map_type) == 'string'%}
                     param{{param.name | label}} = v
                     {%- else %}
-                    if value, err := {{ param | from_string('v') }}; err == nil {
-                        param{{param.name | label}} = {{ (param | map_type) }}(value)
+                    if value, err := {{ param.type | from_string('v') }}; err == nil {
+                        param{{param.name | label}} = {{ (param.type | map_type) }}(value)
                     } else {
-                        log.Println("{{endpoint.operationId}}: decode {{param.name}} from path:", err)
+                        log.Println("{{method.name}}: decode {{param.name}} from path:", err)
                         jsonError(w, err.Error(), http.StatusBadRequest)
                         return
                     }
                     {%- endif  %}
                 }
-            {%- elif param.in == 'body' %}
-                {% if endpoint.get('consumes', []) %}
+            {%- elif param.location == 'body' %}
                 switch contentType := r.Header.Get("Content-Type"); contentType {
-                    {% if "appliction/json" in endpoint.get('consumes', []) %}
-                case "application/json":
-                    if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
-                        log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
-                        jsonError(w, err.Error(), http.StatusBadRequest)
-                        return
-                    }
-                    {% elif "text/plain" in endpoint.get('consumes', []) and (param | map_type) == 'string' %}
+                {% if method.consumes_text %}
                 case "text/plain", "":
                     if content, err := ioutil.ReadAll(r.Body); err != nil {
-                        log.Println("{{endpoint.operationId}}: read {{param.name}} from body:", err)
+                        log.Println("{{method.name}}: read {{param.name}} from body:", err)
                         jsonError(w, err.Error(), http.StatusBadRequest)
                         return
                     } else {
                         param{{param.name | label}} = string(content)
                     }
-                    {% endif %}
-                default:
-                    log.Println("{{endpoint.operationId}}: {{param.name}} from body has unsupported content-type", contentType)
-                    jsonError(w, "unsupported or undefined content-type", http.StatusUnsupportedMediaType)
-                    return
-                }
-                {% else %}
-                if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
-                    log.Println("{{endpoint.operationId}}: decode {{param.name}} from body:", err)
-                    jsonError(w, err.Error(), http.StatusBadRequest)
-                    return
-                }
                 {% endif %}
-            {%- elif param.in == 'header' %}
+                {% if method.consumes_json %}
+                case "application/json":
+                    fallthrough
+                default:
+                    if err := json.NewDecoder(r.Body).Decode(&param{{param.name | label}}); err != nil {
+                        log.Println("{{method.name}}: decode {{param.name}} from body:", err)
+                        jsonError(w, err.Error(), http.StatusBadRequest)
+                        return
+                    }
+                {% endif %}
+                }
+            {%- elif param.location == 'header' %}
                 param{{param.name | label}} = r.Header.Get("{{ param.name }}")
-            {%- elif param.in == 'query' %}
-                {%- if (param | map_type) == 'string'%}
+            {%- elif param.location == 'query' %}
+                {%- if (param.type | map_type) == 'string'%}
                 param{{param.name | label}} = urlParams.Get("{{ param.name }}")
                 {%- else %}
-                if value, err := {{ param | from_string('queryParam(urlParams, ' + (param.name | tojson) + ',' + (param.default | string | tojson) + ' )') }}; err == nil {
-                    param{{param.name | label}} = {{ (param | map_type) }}(value)
+                if value, err := {{ param.type | from_string('queryParam(urlParams, ' + (param.name | tojson) + ',' + (param.default | string | tojson) + ' )') }}; err == nil {
+                    param{{param.name | label}} = {{ (param.type | map_type) }}(value)
                 } else {
-                    log.Println("{{endpoint.operationId}}: decode {{param.name}} from query:", err)
+                    log.Println("{{method.name}}: decode {{param.name}} from query:", err)
                     jsonError(w, err.Error(), http.StatusBadRequest)
                     return
                 }
@@ -169,65 +159,64 @@ func (srv *server) {{endpoint.operationId | label}}(w http.ResponseWriter, r *ht
         {% endfor -%}
 
 
-        if err := validate{{endpoint.operationId | label}}(
-        {%- for param in endpoint.get('parameters', []) -%}
+        if err := validate{{method.name | label}}(
+        {%- for param in method.parameters -%}
         {% if not loop.first %}, {% endif %}param{{param.name | label}}
         {%- endfor -%}); err != nil {
-            log.Println("{{endpoint.operationId}}: validate:", err)
+            log.Println("{{method.name}}: validate:", err)
             jsonError(w, err.Error(), http.StatusUnprocessableEntity)
             return
         }
 
 
-        {%- if endpoint | secured %}
+        {%- if method.secured %}
         ctx := context.WithValue(r.Context(), ctxKeyCredentials, credentials)
         {% else %}
         ctx := r.Context()
         {% endif %}
 
-        {%- if 204 in endpoint.responses %} err
-        {%- else %} res, err
-        {%- endif %} := srv.impl.{{endpoint.operationId | label}}(ctx
-        {%- for param in endpoint.get('parameters', []) -%}
+        {%- if method.has_response %} res, err
+        {%- else %} err
+        {%- endif %} := srv.impl.{{method.name | label}}(ctx
+        {%- for param in method.parameters -%}
         , param{{param.name | label}}
         {%- endfor -%})
 
-        {%- if METHOD.response_is_array %}
+        {%- if method.response_is_array %}
         if res == nil {
-            res = make({{METHOD.response_type | map_type(true)}}, 0)
+            res = make({{method.response_type | map_type(true)}}, 0)
         }
         {%- endif %}
 
         if err != nil {
-            log.Println("{{endpoint.operationId}}: execute:", err)
+            log.Println("{{method.name}}: execute:", err)
             autoError(w, err)
             return
         }
 
-        {%- if 204 in endpoint.responses %}
-        w.WriteHeader(http.StatusNoContent)
-        {%- else %}
+        {%- if method.has_response %}
         w.Header().Set("Content-Type", "application/json")
         encoder := json.NewEncoder(w)
         encoder.SetIndent("", "  ")
         w.WriteHeader(http.StatusOK)
         _ = encoder.Encode(res)
+        {%- else %}
+        w.WriteHeader(http.StatusNoContent)
         {%- endif %}
     }
 
-    func validate{{endpoint.operationId | label}}({%- for param in endpoint.get('parameters', []) %}{% if not loop.first %}, {% endif %}param{{ param.name | label }} {{param | map_type(true)}}{% endfor %}) error {
-         {%- for param in endpoint.get('parameters', []) %}
-             {%- if param | is_ref_to_type  %}
+    func validate{{method.name | label}}({%- for param in method.parameters %}{% if not loop.first %}, {% endif %}param{{ param.name | label }} {{param.type | map_type(true)}}{% endfor %}) error {
+         {%- for param in method.parameters %}
+             {%- if param.is_ref  %}
              if err := param{{ param.name | label }}.Validate(); err != nil {
                  return fmt.Errorf("{{ param.name }}: %w", err)
              }
              {%- else %}
-            {{ validate((param | resolve), "param" + (param.name | label), "api.") }}
+            {{ validate((param.type | resolve), "param" + (param.name | label), "api.") }}
              {%- endif %}
          {%- endfor %}
          return nil
     }
-    {% endfor %}
 {% endfor %}
 
 var (

@@ -130,6 +130,24 @@ paths:
           schema:
             $ref: "#/definitions/Dashboard"
 
+  "/dashboard/{id}":
+    get:
+      tags:
+        - dashboard
+      parameters:
+        - in: path
+          name: id
+          type: integer
+          format: int64
+          required: true
+      description:
+        Get dashboard by id
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/Dashboard"
+
   "/dashboard/resources":
     post:
       tags:
