@@ -169,7 +169,7 @@ func (srv *server) {{method.name | label}}(w http.ResponseWriter, r *http.Reques
         }
 
         ctx := withRequest(r.Context(), r)
-        {%- if method.secured %}
+        {% if method.secured %}
         ctx = context.WithValue(ctx, ctxKeyCredentials, credentials)
         {% endif %}
 
