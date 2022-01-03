@@ -168,11 +168,9 @@ func (srv *server) {{method.name | label}}(w http.ResponseWriter, r *http.Reques
             return
         }
 
-
+        ctx := withRequest(r.Context(), r)
         {%- if method.secured %}
-        ctx := context.WithValue(r.Context(), ctxKeyCredentials, credentials)
-        {% else %}
-        ctx := r.Context()
+        ctx = context.WithValue(ctx, ctxKeyCredentials, credentials)
         {% endif %}
 
         {%- if method.has_response %} res, err
@@ -250,4 +248,14 @@ func queryParam(r url.Values, name string, defaultValue string) string {
 		return r.Get(name)
 	}
 	return defaultValue
+}
+
+type requestCtx struct{}
+
+func withRequest(ctx context.Context, req *http.Request) context.Context {
+	return context.WithValue(ctx, requestCtx{}, req)
+}
+
+func RequestFromContext(ctx context.Context) *http.Request {
+	return ctx.Value(requestCtx{}).(*http.Request)
 }
